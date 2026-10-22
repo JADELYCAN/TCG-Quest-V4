@@ -1,4 +1,4 @@
-import os, io, base64, time
+import os, io, base64, time, json
 from collections import defaultdict, deque
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image, UnidentifiedImageError
@@ -75,6 +75,62 @@ def generate():
     except (requests.RequestException,KeyError,IndexError,ValueError) as exc:
         app.logger.warning('AI generation failed: %s',type(exc).__name__)
         return jsonify(error='AI provider unavailable or returned invalid data.'),502
+
+
+# Development scanner: visual identification is an estimate, not a verified catalog match.
+scanner_requests=defaultdict(deque)
+
+@app.route('/api/cards/identify',methods=['POST','OPTIONS'])
+def identify_card():
+    if request.method=='OPTIONS':return ('',204)
+    origin=request.headers.get('Origin','').rstrip('/')
+    if origin and origin not in ALLOWED_ORIGINS:return jsonify(error='Origin not allowed'),403
+    key=os.getenv('OPENAI_API_KEY')
+    if not key:return jsonify(error='AI service not configured.'),503
+    ip=request.remote_addr or 'unknown'; now=time.monotonic(); q=scanner_requests[ip]
+    while q and now-q[0]>3600:q.popleft()
+    if len(q)>=5:return jsonify(error='Scanner demo limit reached (5/hour). Try later.'),429
+    upload=request.files.get('card')
+    if not upload:return jsonify(error='Choose a card photo.'),400
+    raw=upload.read(8*1024*1024+1)
+    if len(raw)>8*1024*1024:return jsonify(error='Card image must be 8 MB or smaller.'),413
+    try:
+        im=Image.open(io.BytesIO(raw));im.verify()
+        im=Image.open(io.BytesIO(raw));im.load()
+        if im.format not in ('JPEG','PNG','WEBP') or im.width*im.height>20_000_000:raise ValueError()
+        im.thumbnail((1200,1200));im=im.convert('RGB');buf=io.BytesIO();im.save(buf,format='JPEG',quality=82)
+        encoded=base64.b64encode(buf.getvalue()).decode('ascii')
+    except (UnidentifiedImageError,ValueError,OSError,Image.DecompressionBombError):
+        return jsonify(error='Invalid or oversized card image.'),400
+    q.append(now)
+    instructions=('You inspect photos of collectible trading cards. Identify ONLY text and details actually visible. '
+      'Never invent a set number, year, rarity, brand, or athlete. Return a JSON object with exactly these string keys: '
+      'name, category, set, number, year, rarity, confidence, notes. '
+      'category must be one of Pokémon, One Piece, Sports, Other TCG, Unknown. '
+      'confidence must be high, medium, or low. Use empty strings for unreadable values. '
+      'If no collectible card is visible, set category Unknown and explain in notes. '
+      'This is an image-only estimate, not a catalog-verified identification.')
+    try:
+        r=requests.post('https://api.openai.com/v1/chat/completions',
+          headers={'Authorization':'Bearer '+key},json={
+          'model':os.getenv('OPENAI_VISION_MODEL','gpt-4.1-mini'),
+          'messages':[{'role':'system','content':instructions},{'role':'user','content':[
+          {'type':'text','text':'Identify this trading card from the photo. Respond only in JSON.'},
+          {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+encoded}}]}],
+          'response_format':{'type':'json_object'},'max_tokens':350},timeout=90)
+        if not r.ok:
+            if r.status_code==429:return jsonify(error='AI rate limit or insufficient API quota.'),429
+            app.logger.warning('Scanner provider status %s',r.status_code)
+            return jsonify(error='Scanner AI provider error (HTTP '+str(r.status_code)+').'),502
+        result=json.loads(r.json()['choices'][0]['message']['content'])
+        fields=('name','category','set','number','year','rarity','confidence','notes')
+        clean={k:str(result.get(k,'') or '')[:300] for k in fields}
+        if clean['category'] not in ('Pokémon','One Piece','Sports','Other TCG','Unknown'):clean['category']='Unknown'
+        if clean['confidence'] not in ('high','medium','low'):clean['confidence']='low'
+        return jsonify(card=clean,verified=False)
+    except (requests.RequestException,KeyError,IndexError,ValueError,TypeError):
+        app.logger.warning('Scanner request failed')
+        return jsonify(error='Scanner AI unavailable or returned invalid data.'),502
 
 @app.errorhandler(413)
 def too_large(_):return jsonify(error='Photo exceeds 8 MB.'),413
