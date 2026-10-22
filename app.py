@@ -1,7 +1,7 @@
 import os, io, base64, time, json
 from collections import defaultdict, deque
 from flask import Flask, request, jsonify, send_from_directory
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 import requests
 
 app=Flask(__name__, static_folder='assets')
@@ -95,13 +95,25 @@ def identify_card():
     raw=upload.read(8*1024*1024+1)
     if len(raw)>8*1024*1024:return jsonify(error='Card image must be 8 MB or smaller.'),413
     try:
-        im=Image.open(io.BytesIO(raw));im.verify()
-        im=Image.open(io.BytesIO(raw));im.load()
-        if im.format not in ('JPEG','PNG','WEBP') or im.width*im.height>20_000_000:raise ValueError()
-        im.thumbnail((1200,1200));im=im.convert('RGB');buf=io.BytesIO();im.save(buf,format='JPEG',quality=82)
-        encoded=base64.b64encode(buf.getvalue()).decode('ascii')
-    except (UnidentifiedImageError,ValueError,OSError,Image.DecompressionBombError):
-        return jsonify(error='Invalid or oversized card image.'),400
+        with Image.open(io.BytesIO(raw)) as source:
+            image_format=source.format
+            width,height=source.size
+            if image_format not in ('JPEG','PNG','WEBP'):
+                return jsonify(error='Unsupported card image format. Please upload a JPG, PNG, or WebP file.'),400
+            if width<100 or height<100:
+                return jsonify(error='Card photo is too small. Use an image at least 100 pixels wide and tall.'),400
+            if width*height>20_000_000:
+                return jsonify(error='Card photo resolution is too large (over 20 megapixels). Please resize it.'),400
+            source.load()
+            im=ImageOps.exif_transpose(source)
+            im.thumbnail((1200,1200))
+            im=im.convert('RGB')
+            buf=io.BytesIO()
+            im.save(buf,format='JPEG',quality=82)
+            encoded=base64.b64encode(buf.getvalue()).decode('ascii')
+    except (UnidentifiedImageError,OSError,ValueError,Image.DecompressionBombError) as exc:
+        app.logger.warning('Scanner image decoding failed: %s',type(exc).__name__)
+        return jsonify(error='Could not read card image. Please try exporting it as a new JPG or PNG.'),400
     q.append(now)
     instructions=('You inspect photos of collectible trading cards. Identify ONLY text and details actually visible. '
       'Never invent a set number, year, rarity, brand, or athlete. Return a JSON object with exactly these string keys: '
