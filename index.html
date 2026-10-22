@@ -70,7 +70,7 @@
 <section id="grading"><h2>🛡️ Grading Helper</h2><div class="panel"><p>Planned: centering, corners, edges, and surface analysis with a clearly labeled estimated grade. No grade is guaranteed or PSA-certified.</p></div></section>
 <section id="prices"><h2>💲 Compare Prices</h2><div class="panel"><p>Marketplace comparisons will appear after a live pricing source is connected.</p></div></section>
 <section id="rewards"><h2>🏆 Rewards & Leaderboards</h2><div class="panel"><p>Coming soon: verified activities, anti-abuse protections, and prize rules. No points or prizes are currently awarded.</p></div></section>
-<div id="artworkDialog" class="artwork-dialog hidden" role="dialog" aria-modal="true" aria-label="Choose card artwork"><div class="artwork-panel"><button type="button" onclick="closeArtworkDialog()" style="float:right">✕ Close</button><h3>Find Pokémon Artwork</h3><p class="anime-note">Review the card image, set, and number carefully. Only select the exact version you own. Catalog images require an internet connection.</p><div id="artworkMessage" class="statusline" aria-live="polite"></div><div id="artworkResults" class="artwork-results"></div></div></div>
+<div id="artworkDialog" class="artwork-dialog hidden" role="dialog" aria-modal="true" aria-label="Choose card artwork"><div class="artwork-panel"><button type="button" onclick="closeArtworkDialog()" style="float:right">✕ Close</button><h3>Find Pokémon Artwork</h3><p class="anime-note">Review the card image, set, and number carefully. Confirming a catalog match automatically updates saved set, number, and available year/rarity details. Catalog images require an internet connection.</p><div id="artworkMessage" class="statusline" aria-live="polite"></div><div id="artworkResults" class="artwork-results"></div></div></div>
 <div id="cardLightbox" class="card-lightbox hidden" role="dialog" aria-modal="true" aria-label="Enlarged card artwork" onclick="if(event.target===this)closeCardLightbox()"><div class="card-lightbox-content"><button type="button" class="card-lightbox-close" onclick="closeCardLightbox()">✕ Close</button><img id="cardLightboxImage" alt="Enlarged trading card artwork"><div id="cardLightboxTitle" class="card-lightbox-title"></div></div></div>
 </main>
 <script>
@@ -201,7 +201,7 @@ saveScannedCard=async function(){
 };
 
 
-// Artwork lookup is opt-in and never changes card metadata or existing collection entries.
+// Artwork lookup is opt-in; confirmed catalog selection updates set, number, year and rarity.
 let artworkTarget=null;
 function closeArtworkDialog(){document.getElementById('artworkDialog').classList.add('hidden');artworkTarget=null}
 async function saveArtworkForCard(card,data){
@@ -236,7 +236,7 @@ async function findPokemonArtwork(card){
   const wanted=normalizeCardNumber(card.number);
   const candidates=(Array.isArray(found)?found:[]).filter(x=>x.image&&String(x.name||'').toLowerCase()===String(card.name||'').trim().toLowerCase())
     .sort((a,b)=>Number(normalizeCardNumber(b.localId)===wanted)-Number(normalizeCardNumber(a.localId)===wanted)).slice(0,36);
-  msg.textContent=candidates.length?'Choose a candidate to inspect its set and card number. Results are not automatically verified.':'No exact-name images found. Use Upload Photo instead.';
+  msg.textContent=candidates.length?'Choose a candidate to inspect its set and card number. Confirming the exact match fills in the catalog details.':'No exact-name images found. Use Upload Photo instead.';
   for(const item of candidates){
    const button=document.createElement('button');button.className='artwork-result';
    const im=document.createElement('img');im.src=item.image+'/low.webp';im.alt=item.name+' candidate artwork';im.loading='lazy';
@@ -249,10 +249,19 @@ async function findPokemonArtwork(card){
      const detail=await detailResponse.json();if(artworkTarget!==card)return;
      const setName=detail.set?.name||'Unknown',setId=detail.set?.id||'',num=detail.localId||'?';
      const exactNumber=wanted&&normalizeCardNumber(num)===wanted;
-     const message='Catalog: '+detail.name+'\nSet: '+setName+(setId?' ('+setId+')':'')+'\nNumber: '+num+'\nYour saved card: '+(card.set||'Unknown set')+' / '+(card.number||'Unknown number')+'\n\n'+(exactNumber?'Card number matches. Verify the set and artwork.':'WARNING: Card number does not match (or is missing).')+'\n\nIs this EXACTLY your card?';
+     const catalogNumber=detail.localId||'';
+     const fullNumber=catalogNumber&&detail.set?.cardCount?.official?catalogNumber+'/'+detail.set.cardCount.official:catalogNumber;
+     const message='Catalog: '+detail.name+'\nSet: '+setName+(setId?' ('+setId+')':'')+'\nNumber: '+(fullNumber||'?')+'\nYour saved card: '+(card.set||'Unknown set')+' / '+(card.number||'Unknown number')+'\n\n'+(exactNumber?'Card number matches. Verify the set and artwork.':'WARNING: Card number does not match (or is missing).')+'\n\nIs this EXACTLY your card? If you confirm, the catalog set and card number will automatically replace your saved values.';
      if(!confirm(message)){msg.textContent='Not saved. Select a different image or upload your own.';return}
      const url=(detail.image||item.image)+'/high.webp';
-     await saveArtworkForCard(card,url);closeArtworkDialog();
+     await saveArtworkForCard(card,url);
+     if(setName!=='Unknown')card.set=setName;
+     if(fullNumber)card.number=fullNumber;
+     if(detail.set?.releaseDate){const year=String(detail.set.releaseDate).slice(0,4);if(/^\d{4}$/.test(year))card.year=year}
+     if(detail.rarity)card.rarity=detail.rarity;
+     persistCards();
+     if(vaultCard===card)renderCollectionVault();
+     closeArtworkDialog();
     }catch(e){msg.textContent='Could not save selected artwork: '+e.message}
    };
    results.append(button);
