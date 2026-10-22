@@ -6,7 +6,8 @@ import requests
 
 app=Flask(__name__, static_folder='assets')
 app.config['MAX_CONTENT_LENGTH']=8*1024*1024+4096
-ALLOWED_ORIGINS={x.strip().rstrip('/') for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
+
+ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
 
 @app.after_request
