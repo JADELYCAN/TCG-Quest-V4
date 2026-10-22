@@ -17,6 +17,9 @@
 
 /* Collection gallery + dashboard */
 .collection-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:18px 0}.view-switch{display:flex;gap:5px;padding:4px;background:#07182a;border:1px solid #2577a8;border-radius:11px}.view-switch button{padding:9px 13px;border:0;background:transparent}.view-switch button.selected{background:#0875b3;color:#fff}.collection-search{width:min(100%,350px)}#collectionList.collection-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(185px,1fr));gap:16px}#collectionList.collection-dashboard{display:flex;flex-direction:column;gap:9px}.collection-item{background:#102d45;border:1px solid #267bad;border-radius:13px;overflow:hidden;min-width:0}.collection-gallery .collection-item{display:flex;flex-direction:column}.collection-item .card-visual{aspect-ratio:3/4;background:linear-gradient(150deg,#124f77,#091c30);display:flex;align-items:center;justify-content:center;overflow:hidden}.card-visual img{width:100%;height:100%;object-fit:contain}.card-placeholder{text-align:center;padding:12px;color:#ccefff}.card-placeholder span{font-size:42px;display:block;margin-bottom:8px}.collection-item .card-body{padding:13px;flex:1}.card-body h3{margin:0 0 5px;font-size:18px;overflow-wrap:anywhere}.card-meta{font-size:12px;color:#b9d6e7;line-height:1.7;margin:7px 0}.card-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.card-actions button{font-size:12px;padding:7px 10px}.collection-dashboard .collection-item{display:grid;grid-template-columns:75px minmax(0,1fr);align-items:center}.collection-dashboard .card-visual{height:100%;min-height:110px;aspect-ratio:auto}.collection-dashboard .card-placeholder span{font-size:25px}.collection-empty{color:#bdd5e8;padding:24px;border:1px dashed #347fa6;border-radius:12px}.collection-count{font-size:13px;color:#c3e0f0}@media(max-width:560px){#collectionList.collection-gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.collection-item .card-body{padding:10px}.card-body h3{font-size:15px}.collection-dashboard .collection-item{grid-template-columns:65px minmax(0,1fr)}}
+
+/* Card artwork finder */
+.artwork-tools{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.artwork-tools button{font-size:12px;padding:7px 10px}.artwork-status{font-size:12px;color:#c3e0f0;margin-top:7px}.artwork-dialog{position:fixed;inset:0;z-index:100;background:#000c;display:flex;align-items:center;justify-content:center;padding:15px}.artwork-panel{width:min(800px,100%);max-height:88vh;overflow:auto;background:#0a2136;border:2px solid #27baff;border-radius:16px;padding:20px}.artwork-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:12px;margin-top:12px}.artwork-result{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;min-width:0;text-align:center}.artwork-result img{width:100%;height:165px;object-fit:contain}.artwork-result small{overflow-wrap:anywhere}.artwork-panel h3{margin-top:0}
 </style>
 </head>
 <body>
@@ -49,6 +52,7 @@
 <section id="grading"><h2>🛡️ Grading Helper</h2><div class="panel"><p>Planned: centering, corners, edges, and surface analysis with a clearly labeled estimated grade. No grade is guaranteed or PSA-certified.</p></div></section>
 <section id="prices"><h2>💲 Compare Prices</h2><div class="panel"><p>Marketplace comparisons will appear after a live pricing source is connected.</p></div></section>
 <section id="rewards"><h2>🏆 Rewards & Leaderboards</h2><div class="panel"><p>Coming soon: verified activities, anti-abuse protections, and prize rules. No points or prizes are currently awarded.</p></div></section>
+<div id="artworkDialog" class="artwork-dialog hidden" role="dialog" aria-modal="true" aria-label="Choose card artwork"><div class="artwork-panel"><button type="button" onclick="closeArtworkDialog()" style="float:right">✕ Close</button><h3>Find Pokémon Artwork</h3><p class="anime-note">Review the card image, set, and number carefully. Only select the exact version you own. Catalog images require an internet connection.</p><div id="artworkMessage" class="statusline" aria-live="polite"></div><div id="artworkResults" class="artwork-results"></div></div></div>
 </main>
 <script>
 const pages=[['home','Home'],['collection','My Collection'],['scanner','Scan Card'],['grading','Grading Helper'],['prices','Compare Prices'],['rewards','Rewards'],['identity','My Collector']];
@@ -160,7 +164,11 @@ renderCards=function(){
   const parts=[c.set&&'Set: '+c.set,c.number&&'No. '+c.number,c.year&&'Year: '+c.year,c.rarity&&'Rarity: '+c.rarity].filter(Boolean);
   if(parts.length)cardText(body,'div',parts.join(' • '),'card-meta');cardText(body,'div','Quantity: '+(Math.max(1,parseInt(c.quantity,10)||1)),'card-meta');
   const actions=document.createElement('div');actions.className='card-actions';const qty=document.createElement('button');qty.textContent='+1 Qty';qty.onclick=()=>{c.quantity=(Math.max(1,parseInt(c.quantity,10)||1))+1;persistCards()};actions.append(qty);
-  const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{if(!confirm('Remove '+c.name+' from your collection?'))return;cards.splice(i,1);if(c._id)imageTransaction('delete',c._id).catch(()=>{});persistCards()};actions.append(remove);body.append(actions);wrap.append(body);area.append(wrap)
+  const tools=document.createElement('div');tools.className='artwork-tools';
+   const upload=document.createElement('button');upload.textContent='📷 Upload Photo';upload.onclick=()=>uploadCardPhoto(c);tools.append(upload);
+   if(c.game==='Pokémon'){const find=document.createElement('button');find.textContent='🔎 Find Artwork';find.onclick=()=>findPokemonArtwork(c);tools.append(find)}
+   body.append(tools);
+   const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{if(!confirm('Remove '+c.name+' from your collection?'))return;cards.splice(i,1);if(c._id)imageTransaction('delete',c._id).catch(()=>{});persistCards()};actions.append(remove);body.append(actions);wrap.append(body);area.append(wrap)
  })
 };
 // The scanner's original save function remains responsible for card metadata.
@@ -172,6 +180,66 @@ saveScannedCard=async function(){
  if(file){try{const data=await new Promise((resolve,reject)=>{const image=new Image();const objectUrl=URL.createObjectURL(file);image.onload=()=>{try{const canvas=document.createElement('canvas');const scale=Math.min(1,720/image.width,1000/image.height);canvas.width=Math.max(1,Math.round(image.width*scale));canvas.height=Math.max(1,Math.round(image.height*scale));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);const encoded=canvas.toDataURL('image/jpeg',.78);URL.revokeObjectURL(objectUrl);resolve(encoded)}catch(e){URL.revokeObjectURL(objectUrl);reject(e)}};image.onerror=()=>{URL.revokeObjectURL(objectUrl);reject(new Error('Photo could not be read'))};image.src=objectUrl});await imageTransaction('put',c._id,data)}catch(e){alert('Card details will be saved, but the photo could not be stored in this browser.')}}
  cards.push(c);persistCards();scanStatus.textContent='Card saved to My Collection on this device.';show('collection')
 };
+
+
+// Artwork lookup is opt-in and never changes card metadata or existing collection entries.
+let artworkTarget=null;
+function closeArtworkDialog(){document.getElementById('artworkDialog').classList.add('hidden');artworkTarget=null}
+async function saveArtworkForCard(card,data){
+ const id=cardIdentifier(card);
+ await imageTransaction('put',id,data);
+ // Persist only the ID; the original collection storage key is unchanged.
+ localStorage.setItem('tcgquest-v4-cards',JSON.stringify(cards));
+ renderCards();
+}
+function imageToSmallDataURL(file){
+ return new Promise((resolve,reject)=>{
+  if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024)return reject(new Error('Use JPG, PNG or WebP under 8 MB.'));
+  const url=URL.createObjectURL(file),img=new Image();
+  img.onload=()=>{try{const canvas=document.createElement('canvas');const scale=Math.min(1,720/img.width,1000/img.height);canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);resolve(canvas.toDataURL('image/jpeg',.78))}catch(e){reject(e)}finally{URL.revokeObjectURL(url)}};
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Could not read photo.'))};img.src=url;
+ });
+}
+function uploadCardPhoto(card){
+ const input=document.createElement('input');input.type='file';input.accept='image/jpeg,image/png,image/webp';
+ input.onchange=async()=>{const f=input.files&&input.files[0];if(!f)return;try{const data=await imageToSmallDataURL(f);await saveArtworkForCard(card,data)}catch(e){alert('Could not save photo: '+e.message)}};
+ input.click();
+}
+function normalizeCardNumber(value){return String(value||'').trim().replace(/^0+(?=\d)/,'').toLowerCase()}
+async function findPokemonArtwork(card){
+ artworkTarget=card;
+ const dialog=document.getElementById('artworkDialog'),results=document.getElementById('artworkResults'),msg=document.getElementById('artworkMessage');
+ dialog.classList.remove('hidden');results.replaceChildren();msg.textContent='Searching the Pokémon catalog…';
+ try{
+  const response=await fetch('https://api.tcgdex.net/v2/en/cards?name='+encodeURIComponent(card.name),{headers:{'Accept':'application/json'}});
+  if(!response.ok)throw Error('Catalog returned '+response.status);
+  const found=await response.json();if(artworkTarget!==card)return;
+  const wanted=normalizeCardNumber(card.number);
+  const candidates=(Array.isArray(found)?found:[]).filter(x=>x.image&&String(x.name||'').toLowerCase()===String(card.name||'').trim().toLowerCase())
+    .sort((a,b)=>Number(normalizeCardNumber(b.localId)===wanted)-Number(normalizeCardNumber(a.localId)===wanted)).slice(0,36);
+  msg.textContent=candidates.length?'Choose a candidate to inspect its set and card number. Results are not automatically verified.':'No exact-name images found. Use Upload Photo instead.';
+  for(const item of candidates){
+   const button=document.createElement('button');button.className='artwork-result';
+   const im=document.createElement('img');im.src=item.image+'/low.webp';im.alt=item.name+' candidate artwork';im.loading='lazy';
+   button.append(im);cardText(button,'strong',item.name);cardText(button,'small','No. '+(item.localId||'?'));
+   button.onclick=async()=>{
+    msg.textContent='Checking the selected card…';
+    try{
+     const detailResponse=await fetch('https://api.tcgdex.net/v2/en/cards/'+encodeURIComponent(item.id));
+     if(!detailResponse.ok)throw Error('Could not load card details');
+     const detail=await detailResponse.json();if(artworkTarget!==card)return;
+     const setName=detail.set?.name||'Unknown',setId=detail.set?.id||'',num=detail.localId||'?';
+     const exactNumber=wanted&&normalizeCardNumber(num)===wanted;
+     const message='Catalog: '+detail.name+'\nSet: '+setName+(setId?' ('+setId+')':'')+'\nNumber: '+num+'\nYour saved card: '+(card.set||'Unknown set')+' / '+(card.number||'Unknown number')+'\n\n'+(exactNumber?'Card number matches. Verify the set and artwork.':'WARNING: Card number does not match (or is missing).')+'\n\nIs this EXACTLY your card?';
+     if(!confirm(message)){msg.textContent='Not saved. Select a different image or upload your own.';return}
+     const url=(detail.image||item.image)+'/high.webp';
+     await saveArtworkForCard(card,url);closeArtworkDialog();
+    }catch(e){msg.textContent='Could not save selected artwork: '+e.message}
+   };
+   results.append(button);
+  }
+ }catch(e){if(artworkTarget===card)msg.textContent='Catalog unavailable: '+e.message+'. Use Upload Photo instead.'}
+}
 
 show('home');updateIdentity();renderCards();restoreCollectorImage();
 </script>
