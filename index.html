@@ -20,6 +20,18 @@
 
 /* Card artwork finder */
 .artwork-tools{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}.artwork-tools button{font-size:12px;padding:7px 10px}.artwork-status{font-size:12px;color:#c3e0f0;margin-top:7px}.artwork-dialog{position:fixed;inset:0;z-index:100;background:#000c;display:flex;align-items:center;justify-content:center;padding:15px}.artwork-panel{width:min(800px,100%);max-height:88vh;overflow:auto;background:#0a2136;border:2px solid #27baff;border-radius:16px;padding:20px}.artwork-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:12px;margin-top:12px}.artwork-result{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;min-width:0;text-align:center}.artwork-result img{width:100%;height:165px;object-fit:contain}.artwork-result small{overflow-wrap:anywhere}.artwork-panel h3{margin-top:0}
+
+/* Card artwork lightbox — works in both collection views */
+.card-visual.has-photo{cursor:zoom-in;position:relative}
+.card-visual.has-photo:after{content:'⌕ Enlarge';position:absolute;right:8px;bottom:8px;background:#061321dc;border:1px solid #4ad8ff;border-radius:8px;padding:5px 8px;font-size:12px;font-weight:700;pointer-events:none;opacity:0;transition:opacity .15s}
+.card-visual.has-photo:hover:after,.card-visual.has-photo:focus-visible:after{opacity:1}
+.card-visual.has-photo:focus-visible{outline:3px solid #d5ff48;outline-offset:-3px}
+.card-lightbox{position:fixed;inset:0;z-index:1000;background:#020a12ed;display:flex;align-items:center;justify-content:center;padding:24px}
+.card-lightbox-content{position:relative;max-width:min(94vw,850px);max-height:95vh;display:flex;flex-direction:column;align-items:center;gap:10px}
+.card-lightbox img{display:block;max-width:100%;max-height:calc(95vh - 100px);object-fit:contain;border-radius:10px;box-shadow:0 15px 60px #000c}
+.card-lightbox-title{color:#f0f7ff;font-weight:700;text-align:center}
+.card-lightbox-close{align-self:flex-end}
+@media(hover:none){.card-visual.has-photo:after{opacity:1}}
 </style>
 </head>
 <body>
@@ -53,6 +65,7 @@
 <section id="prices"><h2>💲 Compare Prices</h2><div class="panel"><p>Marketplace comparisons will appear after a live pricing source is connected.</p></div></section>
 <section id="rewards"><h2>🏆 Rewards & Leaderboards</h2><div class="panel"><p>Coming soon: verified activities, anti-abuse protections, and prize rules. No points or prizes are currently awarded.</p></div></section>
 <div id="artworkDialog" class="artwork-dialog hidden" role="dialog" aria-modal="true" aria-label="Choose card artwork"><div class="artwork-panel"><button type="button" onclick="closeArtworkDialog()" style="float:right">✕ Close</button><h3>Find Pokémon Artwork</h3><p class="anime-note">Review the card image, set, and number carefully. Only select the exact version you own. Catalog images require an internet connection.</p><div id="artworkMessage" class="statusline" aria-live="polite"></div><div id="artworkResults" class="artwork-results"></div></div></div>
+<div id="cardLightbox" class="card-lightbox hidden" role="dialog" aria-modal="true" aria-label="Enlarged card artwork" onclick="if(event.target===this)closeCardLightbox()"><div class="card-lightbox-content"><button type="button" class="card-lightbox-close" onclick="closeCardLightbox()">✕ Close</button><img id="cardLightboxImage" alt="Enlarged trading card artwork"><div id="cardLightboxTitle" class="card-lightbox-title"></div></div></div>
 </main>
 <script>
 const pages=[['home','Home'],['collection','My Collection'],['scanner','Scan Card'],['grading','Grading Helper'],['prices','Compare Prices'],['rewards','Rewards'],['identity','My Collector']];
@@ -159,7 +172,7 @@ renderCards=function(){
  matching.forEach(({c,i})=>{
   const wrap=document.createElement('article');wrap.className='collection-item';const visual=document.createElement('div');visual.className='card-visual';
   const placeholder=document.createElement('div');placeholder.className='card-placeholder';cardText(placeholder,'span',c.game==='Sports'?'🏆':c.game==='One Piece'?'🏴‍☠️':'⚡');cardText(placeholder,'small','No saved card photo');visual.append(placeholder);wrap.append(visual);
-  if(c._id)imageTransaction('get',c._id).then(data=>{if(data&&wrap.isConnected){const im=document.createElement('img');im.src=data;im.alt='Photo of '+c.name;visual.replaceChildren(im)}}).catch(()=>{});
+  if(c._id)imageTransaction('get',c._id).then(data=>{if(data&&wrap.isConnected){const im=document.createElement('img');im.src=data;im.alt='Photo of '+c.name;visual.replaceChildren(im);visual.classList.add('has-photo');visual.tabIndex=0;visual.setAttribute('role','button');visual.setAttribute('aria-label','Enlarge photo of '+(c.name||'card'));visual.onclick=()=>openCardLightbox(data,c);visual.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openCardLightbox(data,c)}}}}).catch(()=>{});
   const body=document.createElement('div');body.className='card-body';cardText(body,'h3',c.name||'Unnamed card');cardText(body,'div',c.game||'Other TCG','card-meta');
   const parts=[c.set&&'Set: '+c.set,c.number&&'No. '+c.number,c.year&&'Year: '+c.year,c.rarity&&'Rarity: '+c.rarity].filter(Boolean);
   if(parts.length)cardText(body,'div',parts.join(' • '),'card-meta');cardText(body,'div','Quantity: '+(Math.max(1,parseInt(c.quantity,10)||1)),'card-meta');
@@ -242,5 +255,24 @@ async function findPokemonArtwork(card){
 }
 
 show('home');updateIdentity();renderCards();restoreCollectorImage();
+
+// View existing saved card artwork without changing it.
+let cardLightboxPreviousFocus=null;
+function openCardLightbox(imageData,card){
+ const box=document.getElementById('cardLightbox');
+ cardLightboxPreviousFocus=document.activeElement;
+ document.getElementById('cardLightboxImage').src=imageData;
+ document.getElementById('cardLightboxTitle').textContent=[card.name,card.set,card.number].filter(Boolean).join(' • ');
+ box.classList.remove('hidden');document.body.style.overflow='hidden';
+ box.querySelector('.card-lightbox-close').focus();
+}
+function closeCardLightbox(){
+ const box=document.getElementById('cardLightbox');
+ if(box.classList.contains('hidden'))return;
+ box.classList.add('hidden');document.getElementById('cardLightboxImage').removeAttribute('src');
+ document.body.style.overflow='';
+ if(cardLightboxPreviousFocus&&cardLightboxPreviousFocus.isConnected)cardLightboxPreviousFocus.focus();
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCardLightbox()});
 </script>
 </body></html>
