@@ -691,7 +691,7 @@ async function gradeAnalyzeCard(){
     // Phase 4C: separate front/back observations for every corner and edge.
     const inspection=payload.grading.detailed_inspection;
     if(inspection && typeof inspection==='object'){
-      const section=document.createElement('section');section.className='grade-result-summary';
+      const section=document.createElement('section');section.className='grade-result-summary';section.style.display='block';
       const title=document.createElement('h3');title.textContent='🔍 Phase 4C — Detailed Corner & Edge Inspection';
       const note=document.createElement('p');note.textContent='AI observations by location. Top/bottom refer to each photo as uploaded. Unclear areas cannot be reliably graded.';
       section.append(title,note);
