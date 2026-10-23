@@ -217,8 +217,11 @@ def grade_card():
         "If image quality prevents reliable inspection, state that clearly. "
         "Do not claim to detect microscopic defects or authenticate the card. "
         "Return a JSON object with exactly these keys: "
-        "corners, edges, surface, photo_quality, overall_notes. "
-        "Each value must be a short descriptive string. "
+        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason. "
+        "The five condition fields and grade_reason must be short descriptive strings. "
+        "estimated_grade, grade_low, grade_high must be integers from 1 to 10. "
+        "Base the estimate on visible evidence only; grade_low and grade_high must express meaningful uncertainty. "
+        "Do not assume perfect condition from unclear photos. If quality is poor, widen the range. "
         "This is an experimental visual condition assessment, "
         "not an official PSA grade."
     ) 
@@ -287,13 +290,25 @@ def grade_card():
             'edges',
             'surface',
             'photo_quality',
-            'overall_notes'
+            'overall_notes',
+            'grade_reason'
         )
 
         clean = {
             field: str(result.get(field, '') or '')[:500]
             for field in fields
         }
+
+        try:
+            estimate = int(result['estimated_grade'])
+            low = int(result['grade_low'])
+            high = int(result['grade_high'])
+            if not (1 <= low <= estimate <= high <= 10):
+                raise ValueError('Invalid grade range')
+        except (KeyError, TypeError, ValueError):
+            estimate = low = high = None
+
+        clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
             grading=clean,
