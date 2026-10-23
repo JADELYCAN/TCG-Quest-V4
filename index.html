@@ -95,7 +95,7 @@
 
 <section id="vault"><div class="vault-shell"><div class="vault-head"><div><div class="vault-eyebrow">⚡ YOUR CARD QUEST</div><h2>Collection Vault</h2></div><button type="button" onclick="show('collection')">← Back to My Collection</button></div><div class="vault-main"><div><div id="vaultArtwork" class="vault-art" role="button" tabindex="0" aria-label="Enlarge card artwork"></div><p class="vault-note">Select the artwork to enlarge it. Images remain saved in this browser.</p></div><div><h3 id="vaultName" class="vault-title">Card Profile</h3><div id="vaultCategory" class="vault-category"></div><div id="vaultFacts" class="vault-facts"></div><div class="vault-qty"><span>Copies owned</span><button type="button" onclick="changeVaultQuantity(-1)" aria-label="Decrease quantity">−</button><strong id="vaultQuantity">1</strong><button type="button" onclick="changeVaultQuantity(1)" aria-label="Increase quantity">+</button></div><div class="vault-actions"><button type="button" onclick="startVaultEdit()">✎ Edit Card Details</button><button type="button" onclick="vaultUploadArtwork()">📷 Change Photo</button><button type="button" id="vaultFindArtwork" onclick="vaultFindPokemonArtwork()">🔎 Find Artwork</button></div><div id="vaultEdit" class="vault-edit hidden"><label>Name<input id="vaultEditName" maxlength="150"></label><label>Category<select id="vaultEditGame"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select></label><label>Set / Product<input id="vaultEditSet" maxlength="150"></label><label>Card number<input id="vaultEditNumber" maxlength="80"></label><label>Year<input id="vaultEditYear" maxlength="40"></label><label>Rarity / Variant<input id="vaultEditRarity" maxlength="100"></label><div class="vault-edit-actions"><button type="button" onclick="saveVaultEdit()">Save Changes</button><button type="button" onclick="cancelVaultEdit()">Cancel</button></div></div></div></div><div class="vault-tabs" role="tablist" aria-label="Vault information"><button type="button" class="selected" id="vaultTabOverview" onclick="setVaultTab('overview')">⚡ Overview</button><button type="button" id="vaultTabValue" onclick="setVaultTab('value')">💲 Value</button><button type="button" id="vaultTabGrading" onclick="setVaultTab('grading')">🛡️ Grading</button></div><div id="vaultTabContent" class="vault-tabpanel" aria-live="polite"></div></div></section>
 <section id="scanner"><h2>📷 Card Scanner</h2><div class="panel"><p>Upload a Pokémon, One Piece, or sports card photo. AI will estimate its identity; verify the details before saving. Each scan uses API credits.</p><input type="file" id="scanFile" accept="image/*" capture="environment"><p><img id="scanPreview" alt="Selected card preview" style="max-width:260px;max-height:350px;display:none;border-radius:10px"></p><button id="identifyCardBtn" onclick="identifyCard()">🔎 Identify Card with AI</button><p id="scanStatus" class="statusline" aria-live="polite"></p><div id="scanResult" class="hidden"><h3>Review AI identification</h3><p class="anime-note">Visual estimate only. Verify against the actual card and catalog before saving.</p><label for="scanName">Card name</label><input id="scanName" maxlength="150"><label for="scanCategory">Category</label><select id="scanCategory"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select><label for="scanSet">Set / product</label><input id="scanSet" maxlength="150"><label for="scanNumber">Card number</label><input id="scanNumber" maxlength="80"><label for="scanYear">Year</label><input id="scanYear" maxlength="40"><label for="scanRarity">Rarity / variant</label><input id="scanRarity" maxlength="100"><p id="scanConfidence"></p><p id="scanNotes"></p><button onclick="saveScannedCard()">➕ Add reviewed card to My Collection</button></div></div></section>
-<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 3 • Condition Screening</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Photos stay on this device for local measurement and preliminary condition screening; no grading request is sent to AI.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
+<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 4 • AI Photo Inspection</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Measurements run locally. When you select Analyze My Card and confirm, compressed front and back photos are sent to the AI service for experimental condition observations and an unofficial 1–10 grade estimate.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
 <div id="gradeMeasurement" class="measure-lab hidden">
   <h3>📐 Phase 2 — Photo Measurement Review</h3>
   <p class="measure-help">Automatic local image-based edge suggestions appear first. Review both outlines carefully; lighting, artwork, glare, and borderless cards can cause errors. This is a browser-based detection aid, not yet AI grading.</p>
@@ -116,7 +116,7 @@
   <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="measureBorderless" style="width:auto" onchange="measureSetBorderless(this.checked)">Printed border cannot be reliably measured / borderless design</label>
   <div class="panel" id="gradeAnalysisPanel" style="margin-top:18px">
     <h3>🔎 Phase 3 — Preliminary Condition Report</h3>
-    <p class="measure-help">Finish correcting the cyan and lime guides on BOTH sides, then analyze. This first version uses local image-processing estimates, not a trained AI grading model. Photos stay on your device.</p>
+    <p class="measure-help">Finish correcting the cyan and lime guides on BOTH sides, then analyze. Your centering estimate runs locally. After confirmation, AI also inspects both uploaded photos for visible condition issues; AI usage may incur API costs.</p>
     <button type="button" id="gradeAnalyzeBtn" onclick="gradeAnalyzeCard()">🔎 Analyze My Card</button>
     <p id="gradeAnalysisStatus" class="measure-notice" aria-live="polite">Ready when both sides have been reviewed.</p>
     <div id="gradeAnalysisResult" class="hidden" aria-live="polite"></div>
@@ -567,7 +567,7 @@ gradeResetPhotos=function(){++measureRequest;measureState.front=measureState.bac
 const previousGradeSetPhoto=gradeSetPhoto;
 gradeSetPhoto=function(side,file){if(file){measureState[side]=null;document.getElementById('gradeMeasurement').classList.add('hidden')}previousGradeSetPhoto(side,file)};
 
-// Phase 3: transparent local screening. No backend grading endpoint is configured.
+// Phase 3: transparent local screening, retained alongside Phase 4 AI.
 let gradeReportReady=false;
 function gradeMarkAnalysisStale(){
  const result=document.getElementById('gradeAnalysisResult');
@@ -601,7 +601,7 @@ function gradeLocalVisualScreen(s){
  for(let y=0;y<size;y+=7)for(let x=0;x<size;x+=7){const q=lum(x,y);if(q>245)bright++;if(q<12)dark++;total++}
  return {cornerVariation:cornerVariation/Math.max(1,cornerSamples),edgeVariation:edgeVariation/Math.max(1,edgeSamples),glareFraction:bright/total,darkFraction:dark/total};
 }
-function gradeAnalyzeCard(){
+function gradeAnalyzeLocalCard(){
  const front=measureState.front,back=measureState.back;
  const status=document.getElementById('gradeAnalysisStatus'),out=document.getElementById('gradeAnalysisResult');
  if(!front||!back){status.textContent='Upload and review both card photos first.';return}
@@ -630,6 +630,82 @@ function gradeAnalyzeCard(){
  item('🛡️ Assessment status','This is a browser-based condition screening, not trained AI grading and not an official PSA assessment. A dedicated backend vision model and validation against graded cards are needed for an AI-based grade prediction.');
  out.append(grid);out.classList.remove('hidden');
  status.textContent='Preliminary report generated using the current front and back guide positions. Photos were processed locally.';
+}
+
+
+
+// Phase 4: retain local centering screening and add AI photo observations.
+async function gradePrepareUpload(file){
+  const image=await measureImage(file);
+  const canvas=document.createElement('canvas');
+  const scale=Math.min(1,1200/image.naturalWidth,1200/image.naturalHeight);
+  canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+  canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+  canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+  return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Could not prepare photo.')),'image/jpeg',.82));
+}
+let gradeAIInProgress=false;
+async function gradeAnalyzeCard(){
+  if(gradeAIInProgress)return;
+  if(!gradeFiles.front||!gradeFiles.back||!measureState.front||!measureState.back){
+    document.getElementById('gradeAnalysisStatus').textContent='Upload and review both photos first.';
+    return;
+  }
+  // Preserve the Phase 3 centering results even if the AI service is unavailable.
+  gradeAnalyzeLocalCard();
+  const result=document.getElementById('gradeAnalysisResult');
+  if(result.classList.contains('hidden'))return;
+  const aiBox=document.createElement('div');aiBox.className='grade-result-summary';
+  const aiTitle=document.createElement('h3');aiTitle.textContent='🤖 Phase 4 — AI Photo Inspection';
+  const aiStatus=document.createElement('p');aiStatus.textContent='Preparing your photos…';
+  aiBox.append(aiTitle,aiStatus);result.append(aiBox);
+  if(!confirm('Send both card photos to the AI service for experimental condition inspection? This uses paid API credits.')){
+    aiStatus.textContent='AI inspection canceled. Your local preliminary report remains above.';
+    return;
+  }
+  const button=document.getElementById('gradeAnalyzeBtn');
+  gradeAIInProgress=true;button.disabled=true;button.textContent='🤖 Inspecting with AI…';
+  const submittedFront=gradeFiles.front,submittedBack=gradeFiles.back;
+  try{
+    const [front,back]=await Promise.all([gradePrepareUpload(submittedFront),gradePrepareUpload(submittedBack)]);
+    if(front.size+back.size>7*1024*1024)throw Error('Compressed photos are too large. Try smaller images.');
+    const data=new FormData();data.append('front',front,'front.jpg');data.append('back',back,'back.jpg');
+    const configured=backendUrl.value.trim().replace(/\/$/,'');
+    const url=configured||'https://tcg-quest-v4-ai.onrender.com';
+    if(!/^https:\/\/[^\s/]+(?:\/.*)?$/i.test(url))throw Error('Invalid HTTPS backend URL. Check My Collector settings.');
+    aiStatus.textContent='Inspecting front and back photos with AI…';
+    const response=await fetch(url+'/api/cards/grade',{method:'POST',body:data});
+    let payload;try{payload=await response.json()}catch{throw Error('Server returned an unreadable response (HTTP '+response.status+').')}
+    if(!response.ok)throw Error(payload.error||'AI request failed (HTTP '+response.status+').');
+    if(!payload.grading||typeof payload.grading!=='object')throw Error('AI returned an unexpected report.');
+    if(submittedFront!==gradeFiles.front||submittedBack!==gradeFiles.back){aiStatus.textContent='Photos changed during inspection. Discarded outdated AI findings.';return;}
+    aiStatus.textContent='Experimental AI observations from both photos (not an official PSA grade):';
+    const grid=document.createElement('div');grid.className='grade-result-grid';
+    for(const [label,key] of [['🔷 Corners','corners'],['📏 Edges','edges'],['✨ Surface','surface'],['📷 Photo quality','photo_quality'],['🛡️ Overall notes','overall_notes']]){
+      const item=document.createElement('div');item.className='grade-result-item';
+      const heading=document.createElement('b');heading.textContent=label;
+      const details=document.createElement('p');details.textContent=String(payload.grading[key]||'No observation returned.');
+      item.append(heading,details);grid.append(item);
+    }
+    aiBox.append(grid);
+    const estimated=Number(payload.grading.estimated_grade);
+    const low=Number(payload.grading.grade_low);
+    const high=Number(payload.grading.grade_high);
+    if(payload.grading.estimated_grade!==null && Number.isInteger(estimated) && Number.isInteger(low) && Number.isInteger(high) && low>=1 && low<=estimated && estimated<=high && high<=10){
+      const gradeSummary=document.createElement('div');gradeSummary.className='grade-result-summary';
+      const gradeTitle=document.createElement('div');gradeTitle.textContent='Experimental PSA-style grade prediction (unofficial)';
+      const gradeNumber=document.createElement('strong');gradeNumber.textContent=estimated+' / 10';
+      const gradeRange=document.createElement('p');gradeRange.textContent='Uncertainty range: '+low+'–'+high+' / 10';
+      const gradeReason=document.createElement('p');gradeReason.textContent=String(payload.grading.grade_reason||'Based on visible condition in the photos.');
+      const gradeWarning=document.createElement('small');gradeWarning.textContent='AI visual estimate only. Not affiliated with PSA; hidden defects, lighting, and image quality can change the actual grade.';
+      gradeSummary.append(gradeTitle,gradeNumber,gradeRange,gradeReason,gradeWarning);
+      aiBox.insertBefore(gradeSummary,grid);
+    }else{
+      const note=document.createElement('p');note.textContent='AI did not return a reliable numeric estimate. Review the condition findings below.';aiBox.insertBefore(note,grid);
+    }
+    document.getElementById('gradeAnalysisStatus').textContent='Local centering screening and experimental AI photo inspection completed. Results are not an official PSA grade.';
+  }catch(err){aiStatus.textContent='AI inspection unavailable: '+err.message+' Your local preliminary report is still shown above.';}
+  finally{gradeAIInProgress=false;button.disabled=false;button.textContent='🔎 Analyze My Card';}
 }
 
 </script>
