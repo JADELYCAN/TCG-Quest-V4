@@ -870,7 +870,7 @@ function phase5PositionMarkers(){
  const rect=stage.getBoundingClientRect(),iw=image.getBoundingClientRect().width,ih=image.getBoundingClientRect().height;
  if(!rect.width||!rect.height)return;
  const left=(rect.width-iw)/2,top=(rect.height-ih)/2;
- Array.from(layer.children).forEach((btn,i)=>{const loc=phase5Locations[i];btn.style.left=(left+loc[3]*iw)+'px';btn.style.top=(top+loc[4]*ih)+'px'});
+Array.from(layer.querySelectorAll('.phase5-marker')).forEach((btn,i)=>{const loc=phase5Locations[i];btn.style.left=(left+loc[3]*iw)+'px';btn.style.top=(top+loc[4]*ih)+'px'});
 }
 function phase5SelectMarker(index){
  phase5ActiveMarker=index;const [area,key,label]=phase5Locations[index];
