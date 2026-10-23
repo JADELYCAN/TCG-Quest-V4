@@ -688,6 +688,29 @@ async function gradeAnalyzeCard(){
       item.append(heading,details);grid.append(item);
     }
     aiBox.append(grid);
+    // Phase 4C: separate front/back observations for every corner and edge.
+    const inspection=payload.grading.detailed_inspection;
+    if(inspection && typeof inspection==='object'){
+      const section=document.createElement('section');section.className='grade-result-summary';
+      const title=document.createElement('h3');title.textContent='🔍 Phase 4C — Detailed Corner & Edge Inspection';
+      const note=document.createElement('p');note.textContent='AI observations by location. Top/bottom refer to each photo as uploaded. Unclear areas cannot be reliably graded.';
+      section.append(title,note);
+      for(const [side,sideLabel] of [['front','FRONT'],['back','BACK']]){
+        const data=inspection[side];if(!data||typeof data!=='object')continue;
+        const sideTitle=document.createElement('h4');sideTitle.textContent=sideLabel+' — 4 corners and 4 edges';section.append(sideTitle);
+        const detailGrid=document.createElement('div');detailGrid.className='grade-result-grid';
+        for(const [area,locations] of [['corners',[['top_left','Top-left corner'],['top_right','Top-right corner'],['bottom_left','Bottom-left corner'],['bottom_right','Bottom-right corner']]],['edges',[['top','Top edge'],['right','Right edge'],['bottom','Bottom edge'],['left','Left edge']]]]){
+          for(const [key,label] of locations){
+            const cell=document.createElement('div');cell.className='grade-result-item';
+            const heading=document.createElement('b');heading.textContent=label;
+            const desc=document.createElement('p');desc.textContent=String((data[area]&&data[area][key])||'Cannot assess reliably');
+            cell.append(heading,desc);detailGrid.append(cell);
+          }
+        }
+        section.append(detailGrid);
+      }
+      aiBox.append(section);
+    }
     const estimated=Number(payload.grading.estimated_grade);
     const low=Number(payload.grading.grade_low);
     const high=Number(payload.grading.grade_high);
