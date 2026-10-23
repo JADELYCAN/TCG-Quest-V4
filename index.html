@@ -824,6 +824,7 @@ async function gradeAnalyzeCard(){
       const note=document.createElement('p');note.textContent='AI did not return a reliable numeric estimate. Review the condition findings below.';aiBox.insertBefore(note,grid);
     }
          phase5Render(payload);
+         phase6Capture(payload);
      document.getElementById('gradeAnalysisStatus').textContent='Local centering screening and experimental AI photo inspection completed. Results are not an official PSA grade.';
   }catch(err){aiStatus.textContent='AI inspection unavailable: '+err.message+' Your local preliminary report is still shown above.';}
   finally{gradeAIInProgress=false;button.disabled=false;button.textContent='🔎 Analyze My Card';}
