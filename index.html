@@ -458,9 +458,12 @@ function measureDraw(){
     const radius=layer===measureLayer?9:7;
     measureCtx.beginPath();
     if(i%2===0){
-      // Inward-facing quarter-circle sectors: TL ↘, TR ↙, BR ↖, BL ↗.
-      const angles={0:[0,Math.PI/2],2:[Math.PI/2,Math.PI],4:[Math.PI,Math.PI*1.5],6:[Math.PI*1.5,Math.PI*2]};
-      const [a,b]=angles[i];measureCtx.moveTo(p[0],p[1]);measureCtx.arc(p[0],p[1],radius,a,b);measureCtx.closePath();
+      // Three-quarter-circle handle with a missing 90-degree notch facing inward.
+      // Works identically for the cyan outer and lime printed-border corners.
+      const inward={0:Math.PI/4,2:3*Math.PI/4,4:5*Math.PI/4,6:7*Math.PI/4}[i];
+      measureCtx.moveTo(p[0],p[1]);
+      measureCtx.arc(p[0],p[1],radius,inward+Math.PI/4,inward+7*Math.PI/4);
+      measureCtx.closePath();
     }else measureCtx.arc(p[0],p[1],radius*.88,0,Math.PI*2);
     measureCtx.fillStyle=color;measureCtx.fill();measureCtx.lineWidth=1.5;measureCtx.strokeStyle='#071a2d';measureCtx.stroke();
   });
