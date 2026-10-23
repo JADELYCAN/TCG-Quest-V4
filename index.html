@@ -103,7 +103,7 @@
     <button type="button" onclick="measureFit()">Fit photo</button>
     <button type="button" onclick="measureReset()">↺ Reset detected lines</button>
   </div>
-  <p class="measure-help" id="measureInstruction">Drag a colored corner point to correct its position. Drag elsewhere to pan. Use the mouse wheel or zoom buttons to magnify. Each side remembers its own corrections.</p>
+  <p class="measure-help" id="measureInstruction">Drag any of the eight colored control points (four inward-facing corners and four side midpoints) to correct its position. Drag elsewhere to pan. Use the mouse wheel or zoom buttons to magnify. Each side remembers its own corrections.</p>
   <div class="measure-readouts"><div class="measure-readout"><small>Left / Right centering</small><strong id="measureLR">—</strong></div><div class="measure-readout"><small>Top / Bottom centering</small><strong id="measureTB">—</strong></div></div>
   <p class="measure-notice" id="measureQuality" aria-live="polite"></p>
   <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="measureBorderless" style="width:auto" onchange="measureSetBorderless(this.checked)">Printed border cannot be reliably measured / borderless design</label>
@@ -397,7 +397,8 @@ let measureSide='front',measureLayer='outer',measureDrag=null,measureRequest=0;
 const measureCanvas=document.getElementById('measureCanvas'),measureStage=document.getElementById('measureStage');
 const measureCtx=measureCanvas.getContext('2d');
 const measureClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const measureRect=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
+// Clockwise: top-left, top-mid, top-right, right-mid, bottom-right, bottom-mid, bottom-left, left-mid.
+const measureRect=(l,t,r,b)=>[[l,t],[(l+r)/2,t],[r,t],[r,(t+b)/2],[r,b],[(l+r)/2,b],[l,b],[l,(t+b)/2]];
 function measureImage(file){
  return new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Image could not be decoded'))};im.src=u});
 }
@@ -417,7 +418,7 @@ function measureDetect(im){
  // Printed-border detection is especially uncertain; offer editable inset only.
  const insetX=(o[1][0]-o[0][0])*.055,insetY=(o[2][1]-o[1][1])*.055;
  const inn=measureRect(o[0][0]+insetX,o[0][1]+insetY,o[2][0]-insetX,o[2][1]-insetY);
- return {outer:o,inner:inn,quality:plausible?'Suggested outer edges found from image contrast. Verify every corner.':'Low confidence: using approximate starter lines. Please adjust all corners.',borderless:false};
+ return {outer:o,inner:inn,quality:plausible?'Suggested outer edges found from image contrast. Verify every corner and midpoint.':'Low confidence: using approximate starter lines. Please adjust all corners and midpoints.',borderless:false};
 }
 async function measureStart(){
  const ticket=++measureRequest;
@@ -453,7 +454,16 @@ function measureDraw(){
  for(const [layer,color] of [['outer','#54eaff'],['inner','#d6ff49']]){
   const pts=s[layer].map(p=>measureScreen(p,g,s));measureCtx.beginPath();pts.forEach((p,i)=>i?measureCtx.lineTo(...p):measureCtx.moveTo(...p));measureCtx.closePath();
   measureCtx.strokeStyle=color;measureCtx.lineWidth=layer===measureLayer?3:2;measureCtx.setLineDash(layer==='inner'?[8,5]:[]);measureCtx.stroke();measureCtx.setLineDash([]);
-  pts.forEach((p,i)=>{measureCtx.beginPath();measureCtx.arc(...p,layer===measureLayer?8:6,0,Math.PI*2);measureCtx.fillStyle=color;measureCtx.fill();measureCtx.lineWidth=2;measureCtx.strokeStyle='#071a2d';measureCtx.stroke()});
+  pts.forEach((p,i)=>{
+    const radius=layer===measureLayer?9:7;
+    measureCtx.beginPath();
+    if(i%2===0){
+      // Inward-facing quarter-circle sectors: TL ↘, TR ↙, BR ↖, BL ↗.
+      const angles={0:[0,Math.PI/2],2:[Math.PI/2,Math.PI],4:[Math.PI,Math.PI*1.5],6:[Math.PI*1.5,Math.PI*2]};
+      const [a,b]=angles[i];measureCtx.moveTo(p[0],p[1]);measureCtx.arc(p[0],p[1],radius,a,b);measureCtx.closePath();
+    }else measureCtx.arc(p[0],p[1],radius*.88,0,Math.PI*2);
+    measureCtx.fillStyle=color;measureCtx.fill();measureCtx.lineWidth=1.5;measureCtx.strokeStyle='#071a2d';measureCtx.stroke();
+  });
  }
  document.getElementById('measureBorderless').checked=s.borderless;
  document.getElementById('measureQuality').textContent=s.quality+' • '+measureSide.toUpperCase()+' • '+s.im.naturalWidth+' × '+s.im.naturalHeight+' px';
@@ -465,11 +475,11 @@ function measureRatios(){
  if(s.borderless){lr.textContent=tb.textContent='Not measurable';return}
  const o=s.outer,i=s.inner;
  const avg=(arr)=>arr.reduce((a,b)=>a+b,0)/arr.length;
- const left=avg([i[0][0]-o[0][0],i[3][0]-o[3][0]]);
- const right=avg([o[1][0]-i[1][0],o[2][0]-i[2][0]]);
- const top=avg([i[0][1]-o[0][1],i[1][1]-o[1][1]]);
- const bottom=avg([o[3][1]-i[3][1],o[2][1]-i[2][1]]);
- function ratio(a,b){if(a<=0||b<=0||a+b<.001)return 'Check guides';const v=Math.round(100*a/(a+b));return v+' / '+(100-v)}
+   // Measure three corresponding guide locations on every side, including adjustable midpoints.
+  const left=avg([0,7,6].map(k=>i[k][0]-o[k][0]));
+  const right=avg([2,3,4].map(k=>o[k][0]-i[k][0]));
+  const top=avg([0,1,2].map(k=>i[k][1]-o[k][1]));
+  const bottom=avg([6,5,4].map(k=>o[k][1]-i[k][1]));function ratio(a,b){if(a<=0||b<=0||a+b<.001)return 'Check guides';const v=Math.round(100*a/(a+b));return v+' / '+(100-v)}
  lr.textContent=ratio(left,right);tb.textContent=ratio(top,bottom);
 }
 function measureSetBorderless(v){const s=measureState[measureSide];if(!s)return;s.borderless=v;measureRatios()}
