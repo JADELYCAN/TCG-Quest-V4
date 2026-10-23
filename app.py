@@ -269,7 +269,7 @@ def grade_card():
                     }
                 ],
                 'response_format': {'type': 'json_object'},
-                'max_tokens': 600
+                'max_tokens': 1800
             },
             timeout=90
         )
