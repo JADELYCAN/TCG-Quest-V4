@@ -217,7 +217,13 @@ def grade_card():
         "If image quality prevents reliable inspection, state that clearly. "
         "Do not claim to detect microscopic defects or authenticate the card. "
         "Return a JSON object with exactly these keys: "
-        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason. "
+        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection. "
+        "detailed_inspection must be an object with front and back keys; each side has corners and edges objects. "
+        "Each corners object must have top_left, top_right, bottom_left, bottom_right keys. "
+        "Each edges object must have top, right, bottom, left keys. "
+        "Each of these 16 entries must be a concise observation based only on visible evidence; "
+        "use Cannot assess reliably if a specific area is obscured or unclear. "
+        "Describe possible wear and its location without inventing defects. "
         "The five condition fields and grade_reason must be short descriptive strings. "
         "estimated_grade, grade_low, grade_high must be integers from 1 to 10. "
         "Base the estimate on visible evidence only; grade_low and grade_high must express meaningful uncertainty. "
@@ -308,6 +314,25 @@ def grade_card():
         except (KeyError, TypeError, ValueError):
             estimate = low = high = None
 
+        # Normalize all 16 location-specific observations without trusting arbitrary model structure.
+        detail = result.get('detailed_inspection')
+        detail = detail if isinstance(detail, dict) else {}
+        normalized = {}
+        for side in ('front', 'back'):
+            side_data = detail.get(side)
+            side_data = side_data if isinstance(side_data, dict) else {}
+            normalized[side] = {}
+            for area, locations in (
+                ('corners', ('top_left', 'top_right', 'bottom_left', 'bottom_right')),
+                ('edges', ('top', 'right', 'bottom', 'left')),
+            ):
+                values = side_data.get(area)
+                values = values if isinstance(values, dict) else {}
+                normalized[side][area] = {
+                    location: str(values.get(location) or 'Cannot assess reliably')[:220]
+                    for location in locations
+                }
+        clean['detailed_inspection'] = normalized
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
