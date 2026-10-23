@@ -463,98 +463,101 @@ function measureImage(file){
  return new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Image could not be decoded'))};im.src=u});
 }
 function measureDetect(im){
- // Local computer-vision estimate. No remote AI call or grading claim.
- const w=400,h=Math.max(200,Math.min(650,Math.round(400*im.naturalHeight/im.naturalWidth)));
+ // V4 full-card silhouette detection. Never use the artwork's internal edges to
+ // decide the outside rectangle. Runs independently on front and back images.
+ const w=400,h=Math.round(w*im.naturalHeight/im.naturalWidth);
  const c=document.createElement('canvas');c.width=w;c.height=h;
  const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(im,0,0,w,h);
  const data=cx.getImageData(0,0,w,h).data;
- const lum=new Float32Array(w*h),rgb=(xx,yy,k)=>data[4*(yy*w+xx)+k];
- for(let j=0;j<w*h;j++)lum[j]=.2126*data[4*j]+.7152*data[4*j+1]+.0722*data[4*j+2];
- const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  // Detect the physical silhouette by scanning OUTWARD from the card center.
-  // This avoids treating shadows or texture at the photograph boundary as card edges.
-  // Sample each corner separately: the background can be unevenly illuminated.
-  const samples=[];
-  for(const [xx,yy] of [[.025,.025],[.975,.025],[.025,.975],[.975,.975]]){
-    const patch=[];
-    for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
-      const x=Math.max(0,Math.min(w-1,Math.round(xx*w)+dx));
-      const y=Math.max(0,Math.min(h-1,Math.round(yy*h)+dy));
-      const k=4*(y*w+x);patch.push([data[k],data[k+1],data[k+2]]);
-    }
-    const med=v=>v.sort((a,b)=>a-b)[Math.floor(v.length/2)];
-    samples.push([0,1,2].map(ch=>med(patch.map(v=>v[ch]))));
-  }
-  const colorDistance=(x,y)=>{
-    const k=4*(Math.max(0,Math.min(h-1,y))*w+Math.max(0,Math.min(w-1,x)));
-    return Math.min(...samples.map(c=>Math.hypot(data[k]-c[0],data[k+1]-c[1],data[k+2]-c[2])));
-  };
-  // Background threshold is intentionally conservative; four neighboring pixels
-  // must agree so isolated foil glints do not terminate the silhouette scan.
-  const isBackground=(x,y)=>colorDistance(x,y)<43;
-  const boundary=(fixed,from,to,horizontal)=>{
-    const step=from<to?1:-1;
-    for(let n=from;step>0?n<=to:n>=to;n+=step){
-      let count=0;
-      for(let delta=-2;delta<=2;delta++){
-        const x=horizontal?n:Math.max(0,Math.min(w-1,fixed+delta));
-        const y=horizontal?Math.max(0,Math.min(h-1,fixed+delta)):n;
-        if(isBackground(x,y))count++;
-      }
-      if(count>=4){
-        // Find the transition nearest the card, not the outer photo boundary.
-        return n-step;
-      }
-    }
-    return null;
-  };
-  const xEdges=[],yEdges=[];
-  for(let y=Math.round(h*.26);y<=h*.74;y+=Math.max(4,Math.round(h*.045))){
-    const left=boundary(y,Math.round(w*.5),1,true);
-    const right=boundary(y,Math.round(w*.5),w-2,true);
-    if(left!==null&&right!==null&&right-left>w*.38)xEdges.push([left,right]);
-  }
-  for(let x=Math.round(w*.27);x<=w*.73;x+=Math.max(4,Math.round(w*.045))){
-    const top=boundary(x,Math.round(h*.5),1,false);
-    const bottom=boundary(x,Math.round(h*.5),h-2,false);
-    if(top!==null&&bottom!==null&&bottom-top>h*.38)yEdges.push([top,bottom]);
-  }
-  const median=a=>{const v=a.slice().sort((x,y)=>x-y);return v[Math.floor(v.length/2)]};
-  const consistent=(pairs,axis)=>{
-    if(pairs.length<5)return false;
-    const mid0=median(pairs.map(p=>p[0])),mid1=median(pairs.map(p=>p[1]));
-    const tolerance=axis*.055;
-    return pairs.filter(p=>Math.abs(p[0]-mid0)<tolerance&&Math.abs(p[1]-mid1)<tolerance).length>=Math.ceil(pairs.length*.65);
-  };
-  const silhouette=consistent(xEdges,w)&&consistent(yEdges,h);
-  let l,r,t,b;
-  if(silhouette){
-    l=median(xEdges.map(v=>v[0]));r=median(xEdges.map(v=>v[1]));
-    t=median(yEdges.map(v=>v[0]));b=median(yEdges.map(v=>v[1]));
-  }else{
-    // Never imply that a default rectangle is a measured card boundary.
-    l=w*.08;r=w*.92;t=h*.08;b=h*.92;
-  }
-  l=clamp(l,0,w*.40);r=clamp(r,w*.60,w);
-  t=clamp(t,0,h*.40);b=clamp(b,h*.60,h);
- const outer=measureRect(l/w,t/h,r/w,b/h);
- // Detect the first coherent printed border inside each physical edge. Restrict
- // searches to the narrow frame area, avoiding text and artwork in the center.
- const gray=(xx,yy)=>lum[clamp(Math.round(yy),0,h-1)*w+clamp(Math.round(xx),0,w-1)];
- const edgeX=xx=>{let score=0,n=0;for(let yy=t+(b-t)*.18;yy<b-(b-t)*.18;yy+=3){score+=Math.abs(gray(xx+2,yy)-gray(xx-2,yy));n++}return score/Math.max(1,n)};
- const edgeY=yy=>{let score=0,n=0;for(let xx=l+(r-l)*.18;xx<r-(r-l)*.18;xx+=3){score+=Math.abs(gray(xx,yy+2)-gray(xx,yy-2));n++}return score/Math.max(1,n)};
- function findInset(start,end,score,fallBack){let best=fallBack,bestScore=-1;
-  const low=Math.round(Math.min(start,end)),high=Math.round(Math.max(start,end));
-  for(let pos=low;pos<=high;pos++){const v=score(pos);if(v>bestScore){bestScore=v;best=pos}}
-  return bestScore>=7?best:fallBack;
+ const light=new Uint8Array(w*h),mask=new Uint8Array(w*h);
+ const corners=[];
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  const i=y*w+x,k=i*4;
+  light[i]=Math.round(.2126*data[k]+.7152*data[k+1]+.0722*data[k+2]);
+  if((x<w*.09||x>w*.91)&&(y<h*.09||y>h*.91))corners.push(light[i]);
  }
- const width=r-l,height=b-t;
- const il=findInset(l+width*.018,l+width*.115,edgeX,l+width*.055);
- const ir=findInset(r-width*.115,r-width*.018,edgeX,r-width*.055);
- const it=findInset(t+height*.018,t+height*.115,edgeY,t+height*.055);
- const ib=findInset(b-height*.115,b-height*.018,edgeY,b-height*.055);
- const inner=measureRect(il/w,it/h,ir/w,ib/h);
- return {outer,inner,quality:silhouette?'Automatic outer-edge estimate (medium confidence). Verify cyan and lime guides before grading.':'Automatic detection uncertain: background or shadows prevented a reliable outline. Guides are placeholders, not measurements.',borderless:false};
+ corners.sort((a,b)=>a-b);
+ const bg=corners[Math.floor(corners.length*.5)];
+ // A conservative dark threshold isolates the card from a light desk without
+ // merging it with the subtle gray cast shadow at the lower edge.
+ const threshold=Math.min(112,Math.max(65,bg-90));
+ for(let i=0;i<mask.length;i++)mask[i]=light[i]<threshold?1:0;
+ // Flood fill the largest contiguous dark object. This avoids horizontal scan
+ // lines locking onto the card's inner artwork or Pokémon's central logo.
+ const visited=new Uint8Array(w*h),queue=new Int32Array(w*h);
+ let best=null;
+ for(let y=1;y<h-1;y+=2)for(let x=1;x<w-1;x+=2){
+  const seed=y*w+x;if(!mask[seed]||visited[seed])continue;
+  let head=0,tail=1;queue[0]=seed;visited[seed]=1;
+  let left=w,right=0,top=h,bottom=0,count=0;
+  while(head<tail){
+   const id=queue[head++],xx=id%w,yy=(id/w)|0;count++;
+   if(xx<left)left=xx;if(xx>right)right=xx;
+   if(yy<top)top=yy;if(yy>bottom)bottom=yy;
+   for(const n of [id-1,id+1,id-w,id+w]){
+    if(n<0||n>=mask.length||visited[n]||!mask[n])continue;
+    if((n===id-1&&xx===0)||(n===id+1&&xx===w-1))continue;
+    visited[n]=1;queue[tail++]=n;
+   }
+  }
+  if(!best||count>best.count)best={left,right,top,bottom,count};
+ }
+ const valid=!!best&&best.count>w*h*.13&&best.right-best.left>w*.42&&
+  best.bottom-best.top>h*.43&&best.left>3&&best.right<w-4&&best.top>3&&best.bottom<h-4;
+ let l=valid?best.left:w*.1,r=valid?best.right:w*.9;
+ let t=valid?best.top:h*.1,b=valid?best.bottom:h*.9;
+ // V5: refine the RIGHT physical edge independently. The dark-object mask can
+ // include a narrow cast shadow, so its rightmost pixel is not necessarily card.
+ // Look for a consistent dark-to-light transition in the vicinity of that edge.
+ let rightRefined=false;
+ if(valid){
+  const votes=[];
+  for(let yy=Math.round(t+(b-t)*.16);yy<=Math.round(t+(b-t)*.84);yy+=5){
+   let strongest=-1,edge=-1;
+   const lo=Math.max(Math.round(l+(r-l)*.83),Math.round(r-18));
+   const hi=Math.min(w-3,Math.round(r+7));
+   for(let xx=lo;xx<=hi;xx++){
+    const at=(xx,dy)=>light[Math.min(h-1,Math.max(0,yy+dy))*w+xx];
+    const dark=(at(xx-3,0)+at(xx-2,0)+at(xx-1,0))/3;
+    const bright=(at(xx+2,0)+at(xx+3,0)+at(xx+4,0))/3;
+    const contrast=bright-dark;
+    if(contrast>strongest){strongest=contrast;edge=xx;}
+   }
+   if(strongest>46&&edge>=0)votes.push(edge);
+  }
+  if(votes.length>=Math.max(9,Math.round((b-t)*.68/5*.40))){
+   votes.sort((a,b)=>a-b);
+   const middle=votes[Math.floor(votes.length/2)];
+   const consistent=votes.filter(v=>Math.abs(v-middle)<=5).length;
+   if(consistent>=votes.length*.65&&Math.abs(middle-r)<Math.max(14,(r-l)*.055)){
+    r=middle;rightRefined=true;
+   }
+  }
+ }
+ // Use the silhouette itself for the cyan boundary, then inset the print guide.
+ // In full-art cards the lime guide is an estimate, not a literal art frame.
+ const outer=measureRect(l/w,t/h,r/w,b/h);
+ const cw=r-l,ch=b-t;
+ // Classify the card BACK from the blue printed frame, not from the
+ // middle of the image (which is the white/red Poké Ball).
+ const sample=(x,y)=>{const ix=Math.max(0,Math.min(w-1,Math.round(x))),iy=Math.max(0,Math.min(h-1,Math.round(y))),k=(iy*w+ix)*4;return [data[k],data[k+1],data[k+2]]};
+ let blueVotes=0,totalVotes=0;
+ for(const yf of [.035,.06,.10,.90,.94,.965])for(const xf of [.15,.35,.5,.65,.85]){
+  const [red,green,blue]=sample(l+cw*xf,t+ch*yf);
+  if(blue>red*1.20&&blue>green*1.10&&blue-red>12)blueVotes++;
+  totalVotes++;
+ }
+ const backLike=blueVotes>=Math.max(6,totalVotes*.22);
+ // The back has a broad blue frame; the full-art Giratina front has a
+ // narrower dark artwork frame. Distinct horizontal/vertical insets
+ // avoid placing the lime outline directly on top of the cyan outline.
+ const insetX=backLike?.043:.055;
+ const insetY=backLike?.039:.038;
+ const inner=measureRect((l+cw*insetX)/w,(t+ch*insetY)/h,
+                         (r-cw*insetX)/w,(b-ch*insetY)/h);
+ return {outer,inner,quality:valid?
+  (rightRefined?'Cyan: card silhouette with independently refined right edge. ':'Cyan: detected card silhouette. ')+'Lime: estimated inner print boundary; verify before relying on centering or grading.':
+  'Low-confidence card detection. Guides are placeholders; adjust them before grading.',borderless:!backLike};
 }
 async function measureStart(){
  const ticket=++measureRequest;
