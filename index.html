@@ -119,7 +119,7 @@
 <section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 6 • Advanced AI Grading Lab</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Measurements run locally. When you select Analyze My Card and confirm, compressed front and back photos are sent to the AI service for experimental condition observations and an unofficial 1–10 grade estimate.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
 <div id="gradeMeasurement" class="measure-lab hidden">
   <h3>📐 Phase 2 — Photo Measurement Review</h3>
-  <p class="measure-help">Automatic local image-based edge suggestions appear first. Review both outlines carefully; lighting, artwork, glare, and borderless cards can cause errors. This is a browser-based detection aid, not yet AI grading.</p>
+  <p class="measure-help">Automatic local image-based edge suggestions appear first. If the photo background is uneven or the card is tilted, the app will flag low confidence. Review both outlines carefully; lighting, artwork, glare, and borderless cards can cause errors. This is a browser-based detection aid, not yet AI grading.</p>
   <div class="measure-tabs"><button type="button" id="measureFrontBtn" class="selected" onclick="measureSwitch('front')">Front</button><button type="button" id="measureBackBtn" onclick="measureSwitch('back')">Back</button></div>
   <div class="measure-legend"><span class="outer">● Cyan: outside card edges</span><span class="inner">● Lime: printed border</span></div>
   <div class="measure-stage" id="measureStage"><canvas id="measureCanvas" aria-label="Card photo with adjustable measurement guides"></canvas></div>
@@ -471,34 +471,72 @@ function measureDetect(im){
  const lum=new Float32Array(w*h),rgb=(xx,yy,k)=>data[4*(yy*w+xx)+k];
  for(let j=0;j<w*h;j++)lum[j]=.2126*data[4*j]+.7152*data[4*j+1]+.0722*data[4*j+2];
  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
- // Identify the outside silhouette from the image's outer background, rather
- // than selecting the strongest edge in the busy card illustration.
- const bg=[];for(let yy=0;yy<h;yy+=Math.max(1,Math.floor(h/24)))for(const xx of [1,w-2])bg.push([rgb(xx,yy,0),rgb(xx,yy,1),rgb(xx,yy,2)]);
- for(let xx=0;xx<w;xx+=Math.max(1,Math.floor(w/24)))for(const yy of [1,h-2])bg.push([rgb(xx,yy,0),rgb(xx,yy,1),rgb(xx,yy,2)]);
- const median=a=>{const v=a.slice().sort((x,y)=>x-y);return v[Math.floor(v.length/2)]};
- const background=[0,1,2].map(k=>median(bg.map(p=>p[k])));
- const dist=(xx,yy)=>{const q=4*(yy*w+xx);return Math.hypot(data[q]-background[0],data[q+1]-background[1],data[q+2]-background[2]);};
- // Scan across multiple rows and columns to reject text/artwork outliers.
- const xs=[],ys=[];
- for(let yy=Math.round(h*.20);yy<=h*.80;yy+=Math.max(2,Math.round(h*.065))){
-  let left=-1,right=-1;
-  for(let xx=2;xx<w*.46;xx++)if(dist(xx,yy)>37&&dist(xx+2,yy)>37&&dist(xx+5,yy)>31){left=xx;break}
-  for(let xx=w-3;xx>w*.54;xx--)if(dist(xx,yy)>37&&dist(xx-2,yy)>37&&dist(xx-5,yy)>31){right=xx;break}
-  if(left>=0&&right>=0&&right-left>w*.56)xs.push([left,right]);
- }
- for(let xx=Math.round(w*.22);xx<=w*.78;xx+=Math.max(2,Math.round(w*.065))){
-  let top=-1,bottom=-1;
-  for(let yy=2;yy<h*.46;yy++)if(dist(xx,yy)>37&&dist(xx,yy+2)>37&&dist(xx,yy+5)>31){top=yy;break}
-  for(let yy=h-3;yy>h*.54;yy--)if(dist(xx,yy)>37&&dist(xx,yy-2)>37&&dist(xx,yy-5)>31){bottom=yy;break}
-  if(top>=0&&bottom>=0&&bottom-top>h*.56)ys.push([top,bottom]);
- }
- let l,r,t,b;
- const silhouette=xs.length>=4&&ys.length>=4;
- if(silhouette){l=median(xs.map(q=>q[0]));r=median(xs.map(q=>q[1]));t=median(ys.map(q=>q[0]));b=median(ys.map(q=>q[1]));}
- else{l=w*.045;r=w*.955;t=h*.035;b=h*.965;}
- // For card photos with little visible background, keep the default near the
- // image boundary; the user can still fine-tune each of eight control points.
- l=clamp(l,0,w*.22);r=clamp(r,w*.78,w);t=clamp(t,0,h*.22);b=clamp(b,h*.78,h);
+  // Detect the physical silhouette by scanning OUTWARD from the card center.
+  // This avoids treating shadows or texture at the photograph boundary as card edges.
+  // Sample each corner separately: the background can be unevenly illuminated.
+  const samples=[];
+  for(const [xx,yy] of [[.025,.025],[.975,.025],[.025,.975],[.975,.975]]){
+    const patch=[];
+    for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+      const x=Math.max(0,Math.min(w-1,Math.round(xx*w)+dx));
+      const y=Math.max(0,Math.min(h-1,Math.round(yy*h)+dy));
+      const k=4*(y*w+x);patch.push([data[k],data[k+1],data[k+2]]);
+    }
+    const med=v=>v.sort((a,b)=>a-b)[Math.floor(v.length/2)];
+    samples.push([0,1,2].map(ch=>med(patch.map(v=>v[ch]))));
+  }
+  const colorDistance=(x,y)=>{
+    const k=4*(Math.max(0,Math.min(h-1,y))*w+Math.max(0,Math.min(w-1,x)));
+    return Math.min(...samples.map(c=>Math.hypot(data[k]-c[0],data[k+1]-c[1],data[k+2]-c[2])));
+  };
+  // Background threshold is intentionally conservative; four neighboring pixels
+  // must agree so isolated foil glints do not terminate the silhouette scan.
+  const isBackground=(x,y)=>colorDistance(x,y)<43;
+  const boundary=(fixed,from,to,horizontal)=>{
+    const step=from<to?1:-1;
+    for(let n=from;step>0?n<=to:n>=to;n+=step){
+      let count=0;
+      for(let delta=-2;delta<=2;delta++){
+        const x=horizontal?n:Math.max(0,Math.min(w-1,fixed+delta));
+        const y=horizontal?Math.max(0,Math.min(h-1,fixed+delta)):n;
+        if(isBackground(x,y))count++;
+      }
+      if(count>=4){
+        // Find the transition nearest the card, not the outer photo boundary.
+        return n-step;
+      }
+    }
+    return null;
+  };
+  const xEdges=[],yEdges=[];
+  for(let y=Math.round(h*.26);y<=h*.74;y+=Math.max(4,Math.round(h*.045))){
+    const left=boundary(y,Math.round(w*.5),1,true);
+    const right=boundary(y,Math.round(w*.5),w-2,true);
+    if(left!==null&&right!==null&&right-left>w*.38)xEdges.push([left,right]);
+  }
+  for(let x=Math.round(w*.27);x<=w*.73;x+=Math.max(4,Math.round(w*.045))){
+    const top=boundary(x,Math.round(h*.5),1,false);
+    const bottom=boundary(x,Math.round(h*.5),h-2,false);
+    if(top!==null&&bottom!==null&&bottom-top>h*.38)yEdges.push([top,bottom]);
+  }
+  const median=a=>{const v=a.slice().sort((x,y)=>x-y);return v[Math.floor(v.length/2)]};
+  const consistent=(pairs,axis)=>{
+    if(pairs.length<5)return false;
+    const mid0=median(pairs.map(p=>p[0])),mid1=median(pairs.map(p=>p[1]));
+    const tolerance=axis*.055;
+    return pairs.filter(p=>Math.abs(p[0]-mid0)<tolerance&&Math.abs(p[1]-mid1)<tolerance).length>=Math.ceil(pairs.length*.65);
+  };
+  const silhouette=consistent(xEdges,w)&&consistent(yEdges,h);
+  let l,r,t,b;
+  if(silhouette){
+    l=median(xEdges.map(v=>v[0]));r=median(xEdges.map(v=>v[1]));
+    t=median(yEdges.map(v=>v[0]));b=median(yEdges.map(v=>v[1]));
+  }else{
+    // Never imply that a default rectangle is a measured card boundary.
+    l=w*.08;r=w*.92;t=h*.08;b=h*.92;
+  }
+  l=clamp(l,0,w*.40);r=clamp(r,w*.60,w);
+  t=clamp(t,0,h*.40);b=clamp(b,h*.60,h);
  const outer=measureRect(l/w,t/h,r/w,b/h);
  // Detect the first coherent printed border inside each physical edge. Restrict
  // searches to the narrow frame area, avoiding text and artwork in the center.
@@ -516,7 +554,7 @@ function measureDetect(im){
  const it=findInset(t+height*.018,t+height*.115,edgeY,t+height*.055);
  const ib=findInset(b-height*.115,b-height*.018,edgeY,b-height*.055);
  const inner=measureRect(il/w,it/h,ir/w,ib/h);
- return {outer,inner,quality:silhouette?'Local auto-alignment completed. Check cyan physical edges and lime printed borders; fine-tune if needed.':'Low confidence: background was hard to distinguish. Guides are approximate; adjust as needed.',borderless:false};
+ return {outer,inner,quality:silhouette?'Automatic outer-edge estimate (medium confidence). Verify cyan and lime guides before grading.':'Automatic detection uncertain: background or shadows prevented a reliable outline. Guides are placeholders, not measurements.',borderless:false};
 }
 async function measureStart(){
  const ticket=++measureRequest;
