@@ -144,6 +144,175 @@ def identify_card():
         app.logger.warning('Scanner request failed')
         return jsonify(error='Scanner AI unavailable or returned invalid data.'),502
 
+# Phase 4 — AI Card Grading
+grading_requests = defaultdict(deque)
+
+@app.route('/api/cards/grade', methods=['POST', 'OPTIONS'])
+def grade_card():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+
+    origin = request.headers.get('Origin', '').rstrip('/')
+    if origin and origin not in ALLOWED_ORIGINS:
+        return jsonify(error='Origin not allowed'), 403
+
+    key = os.getenv('OPENAI_API_KEY')
+    if not key:
+        return jsonify(error='AI grading service not configured.'), 503
+
+    front = request.files.get('front')
+    back = request.files.get('back')
+
+    if not front or not back:
+        return jsonify(error='Upload both front and back card photos.'), 400
+    def prepare_card_photo(upload):
+        raw = upload.read(8 * 1024 * 1024 + 1)
+
+        if len(raw) > 8 * 1024 * 1024:
+            raise ValueError('Each photo must be 8 MB or smaller.')
+
+        with Image.open(io.BytesIO(raw)) as source:
+            if source.format not in ('JPEG', 'PNG', 'WEBP'):
+                raise ValueError('Use JPG, PNG, or WebP photos.')
+
+            width, height = source.size
+            if width < 100 or height < 100:
+                raise ValueError('Card photos must be at least 100 pixels wide and tall.')
+
+            if width * height > 20_000_000:
+                raise ValueError('Photo resolution is too large.')
+
+            source.load()
+            image = ImageOps.exif_transpose(source)
+            image.thumbnail((1536, 1536))
+            image = image.convert('RGB')
+
+            buffer = io.BytesIO()
+            image.save(buffer, format='JPEG', quality=88)
+
+            return base64.b64encode(buffer.getvalue()).decode('ascii')
+    try:
+        front_image = prepare_card_photo(front)
+        back_image = prepare_card_photo(back)
+    except (ValueError, OSError, UnidentifiedImageError,
+            Image.DecompressionBombError) as exc:
+        return jsonify(error='Invalid card photo. Check the format, size, and resolution.'), 400  
+                
+    ip = request.remote_addr or 'unknown'
+    now = time.monotonic()
+    q = grading_requests[ip]
+
+    while q and now - q[0] > 3600:
+        q.popleft()
+
+    if len(q) >= 5:
+        return jsonify(error='AI grading demo limit reached (5/hour). Try later.'), 429
+    grading_instructions = (
+        "You are a collectible trading card condition inspector. "
+        "Examine the FRONT and BACK photographs of the same card. "
+        "Assess visible corner wear, corner whitening, edge wear, "
+        "edge chipping, scratches, print lines, stains, and surface defects. "
+        "Do not invent defects that cannot be seen. "
+        "Distinguish possible reflections, glare, and shadows from actual damage. "
+        "If image quality prevents reliable inspection, state that clearly. "
+        "Do not claim to detect microscopic defects or authenticate the card. "
+        "Return a JSON object with exactly these keys: "
+        "corners, edges, surface, photo_quality, overall_notes. "
+        "Each value must be a short descriptive string. "
+        "This is an experimental visual condition assessment, "
+        "not an official PSA grade."
+    ) 
+    q.append(now)
+
+    try:
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': 'Bearer ' + key
+            },
+            json={
+                'model': os.getenv('OPENAI_VISION_MODEL', 'gpt-4.1-mini'),
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': grading_instructions
+                    },
+                    {
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'text',
+                                'text': 'Inspect these two photos of the same trading card. The first photo is the FRONT and the second is the BACK. Return only JSON.'
+                            },
+                            {
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': 'data:image/jpeg;base64,' + front_image
+                                }
+                            },
+                            {
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': 'data:image/jpeg;base64,' + back_image
+                                }
+                            }
+                        ]
+                    }
+                ],
+                'response_format': {'type': 'json_object'},
+                'max_tokens': 600
+            },
+            timeout=90
+        )
+        if not response.ok:
+            if response.status_code == 429:
+                return jsonify(
+                    error='AI rate limit or insufficient API quota.'
+                ), 429
+
+            app.logger.warning(
+                'Grading provider status %s',
+                response.status_code
+            )
+            return jsonify(
+                error='AI grading provider error.'
+            ), 502
+
+        result = json.loads(
+            response.json()['choices'][0]['message']['content']
+        )
+
+        fields = (
+            'corners',
+            'edges',
+            'surface',
+            'photo_quality',
+            'overall_notes'
+        )
+
+        clean = {
+            field: str(result.get(field, '') or '')[:500]
+            for field in fields
+        }
+
+        return jsonify(
+            grading=clean,
+            verified=False
+        )
+
+    except (
+        requests.RequestException,
+        KeyError,
+        IndexError,
+        ValueError,
+        TypeError
+    ):
+        app.logger.warning('AI grading request failed')
+        return jsonify(
+            error='AI grading unavailable or returned invalid data.'
+        ), 502        
+   
+                
 @app.errorhandler(413)
 def too_large(_):return jsonify(error='Photo exceeds 8 MB.'),413
 
