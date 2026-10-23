@@ -40,6 +40,23 @@
 /* Grading Lab phase 1: local front/back upload and preview */
 .grade-shell{background:radial-gradient(circle at 85% 0%,#134e70,#091e34 55%);border:1px solid #26bfff;border-radius:18px;padding:clamp(15px,3vw,28px)}
 .grade-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}.grade-head h2{color:#d6ff49;margin:5px 0}.grade-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:20px 0}.grade-photo{border:1px solid #367ba1;border-radius:14px;background:#081b2e;padding:15px;min-width:0}.grade-photo h3{margin:0 0 9px}.grade-photo img{display:block;width:100%;height:310px;object-fit:contain;background:#04111e;border-radius:10px;margin:12px 0}.grade-photo input{width:100%;font-size:13px}.grade-photo .empty-preview{height:310px;border:1px dashed #34779b;border-radius:10px;display:grid;place-items:center;color:#abcfe4;margin:12px 0;text-align:center;padding:15px}.grade-status{color:#b8d5e7;line-height:1.6}.grade-actions{display:flex;gap:10px;flex-wrap:wrap}.grade-actions button:disabled{opacity:.45;cursor:not-allowed}@media(max-width:650px){.grade-grid{grid-template-columns:1fr}.grade-photo img,.grade-photo .empty-preview{height:280px}}
+
+/* Grading Lab Phase 2 — measurement workspace */
+.measure-lab{margin-top:18px;border:1px solid #2b93bd;border-radius:16px;background:#071a2d;padding:18px}
+.measure-tabs,.measure-tools,.measure-legend{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:12px 0}
+.measure-tabs button.selected,.measure-tools button.selected{background:#d6ff49;color:#092338;border-color:#d6ff49}
+.measure-stage{position:relative;width:min(100%,760px);height:480px;overflow:hidden;background:#020b15;border:1px solid #3a779a;border-radius:12px;touch-action:none;cursor:grab}
+.measure-stage.dragging{cursor:grabbing}
+.measure-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.measure-help{color:#b7d4e5;font-size:13px;line-height:1.6}
+.measure-legend span{font-size:12px;font-weight:700}
+.measure-legend .outer{color:#54eaff}.measure-legend .inner{color:#d6ff49}
+.measure-readouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+.measure-readout{border:1px solid #245f7b;background:#0b2b42;padding:12px;border-radius:10px}
+.measure-readout strong{font-size:21px;color:#d6ff49}
+.measure-readout small{display:block;margin-bottom:4px}
+.measure-notice{color:#b8d5e7;font-size:12px;line-height:1.6}
+@media(max-width:650px){.measure-stage{height:390px}.measure-lab{padding:12px}}
 </style>
 </head>
 <body>
@@ -71,7 +88,28 @@
 
 <section id="vault"><div class="vault-shell"><div class="vault-head"><div><div class="vault-eyebrow">⚡ YOUR CARD QUEST</div><h2>Collection Vault</h2></div><button type="button" onclick="show('collection')">← Back to My Collection</button></div><div class="vault-main"><div><div id="vaultArtwork" class="vault-art" role="button" tabindex="0" aria-label="Enlarge card artwork"></div><p class="vault-note">Select the artwork to enlarge it. Images remain saved in this browser.</p></div><div><h3 id="vaultName" class="vault-title">Card Profile</h3><div id="vaultCategory" class="vault-category"></div><div id="vaultFacts" class="vault-facts"></div><div class="vault-qty"><span>Copies owned</span><button type="button" onclick="changeVaultQuantity(-1)" aria-label="Decrease quantity">−</button><strong id="vaultQuantity">1</strong><button type="button" onclick="changeVaultQuantity(1)" aria-label="Increase quantity">+</button></div><div class="vault-actions"><button type="button" onclick="startVaultEdit()">✎ Edit Card Details</button><button type="button" onclick="vaultUploadArtwork()">📷 Change Photo</button><button type="button" id="vaultFindArtwork" onclick="vaultFindPokemonArtwork()">🔎 Find Artwork</button></div><div id="vaultEdit" class="vault-edit hidden"><label>Name<input id="vaultEditName" maxlength="150"></label><label>Category<select id="vaultEditGame"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select></label><label>Set / Product<input id="vaultEditSet" maxlength="150"></label><label>Card number<input id="vaultEditNumber" maxlength="80"></label><label>Year<input id="vaultEditYear" maxlength="40"></label><label>Rarity / Variant<input id="vaultEditRarity" maxlength="100"></label><div class="vault-edit-actions"><button type="button" onclick="saveVaultEdit()">Save Changes</button><button type="button" onclick="cancelVaultEdit()">Cancel</button></div></div></div></div><div class="vault-tabs" role="tablist" aria-label="Vault information"><button type="button" class="selected" id="vaultTabOverview" onclick="setVaultTab('overview')">⚡ Overview</button><button type="button" id="vaultTabValue" onclick="setVaultTab('value')">💲 Value</button><button type="button" id="vaultTabGrading" onclick="setVaultTab('grading')">🛡️ Grading</button></div><div id="vaultTabContent" class="vault-tabpanel" aria-live="polite"></div></div></section>
 <section id="scanner"><h2>📷 Card Scanner</h2><div class="panel"><p>Upload a Pokémon, One Piece, or sports card photo. AI will estimate its identity; verify the details before saving. Each scan uses API credits.</p><input type="file" id="scanFile" accept="image/*" capture="environment"><p><img id="scanPreview" alt="Selected card preview" style="max-width:260px;max-height:350px;display:none;border-radius:10px"></p><button id="identifyCardBtn" onclick="identifyCard()">🔎 Identify Card with AI</button><p id="scanStatus" class="statusline" aria-live="polite"></p><div id="scanResult" class="hidden"><h3>Review AI identification</h3><p class="anime-note">Visual estimate only. Verify against the actual card and catalog before saving.</p><label for="scanName">Card name</label><input id="scanName" maxlength="150"><label for="scanCategory">Category</label><select id="scanCategory"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select><label for="scanSet">Set / product</label><input id="scanSet" maxlength="150"><label for="scanNumber">Card number</label><input id="scanNumber" maxlength="80"><label for="scanYear">Year</label><input id="scanYear" maxlength="40"><label for="scanRarity">Rarity / variant</label><input id="scanRarity" maxlength="100"><p id="scanConfidence"></p><p id="scanNotes"></p><button onclick="saveScannedCard()">➕ Add reviewed card to My Collection</button></div></div></section>
-<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 1 • Photo Setup</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Photos stay on this device during this first phase; no grading request is sent to AI yet.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p><div class="notice"><strong>Next development stage:</strong> AI-assisted outer-edge and printed-border detection, zoom and pan, and optional manual correction. Actual centering measurements and PSA-style estimates are not active in this version.</div></div></section>
+<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 1 • Photo Setup</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Photos stay on this device during this first phase; no grading request is sent to AI yet.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
+<div id="gradeMeasurement" class="measure-lab hidden">
+  <h3>📐 Phase 2 — Photo Measurement Review</h3>
+  <p class="measure-help">Automatic image-based edge suggestions appear first. Review both outlines carefully; lighting, artwork, glare, and borderless cards can cause errors. This is a browser-based detection aid, not yet AI grading.</p>
+  <div class="measure-tabs"><button type="button" id="measureFrontBtn" class="selected" onclick="measureSwitch('front')">Front</button><button type="button" id="measureBackBtn" onclick="measureSwitch('back')">Back</button></div>
+  <div class="measure-legend"><span class="outer">● Cyan: outside card edges</span><span class="inner">● Lime: printed border</span></div>
+  <div class="measure-stage" id="measureStage"><canvas id="measureCanvas" aria-label="Card photo with adjustable measurement guides"></canvas></div>
+  <div class="measure-tools">
+    <button type="button" id="measureOuterBtn" class="selected" onclick="measureSelect('outer')">Cyan outer line</button>
+    <button type="button" id="measureInnerBtn" onclick="measureSelect('inner')">Lime printed border</button>
+    <button type="button" onclick="measureZoom(1.35)">＋ Zoom in</button>
+    <button type="button" onclick="measureZoom(1/1.35)">－ Zoom out</button>
+    <button type="button" onclick="measureFit()">Fit photo</button>
+    <button type="button" onclick="measureReset()">↺ Reset detected lines</button>
+  </div>
+  <p class="measure-help" id="measureInstruction">Drag a colored corner point to correct its position. Drag elsewhere to pan. Use the mouse wheel or zoom buttons to magnify. Each side remembers its own corrections.</p>
+  <div class="measure-readouts"><div class="measure-readout"><small>Left / Right centering</small><strong id="measureLR">—</strong></div><div class="measure-readout"><small>Top / Bottom centering</small><strong id="measureTB">—</strong></div></div>
+  <p class="measure-notice" id="measureQuality" aria-live="polite"></p>
+  <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="measureBorderless" style="width:auto" onchange="measureSetBorderless(this.checked)">Printed border cannot be reliably measured / borderless design</label>
+  <p class="measure-notice">Centering figures are approximate measurements from the selected guides, not a PSA grade. Phase 3 will connect AI analysis of corners, edges, and surface, and allow rerunning the assessment after corrections.</p>
+</div>
+</div></section>
 <section id="prices"><h2>💲 Compare Prices</h2><div class="panel"><p>Marketplace comparisons will appear after a live pricing source is connected.</p></div></section>
 <section id="rewards"><h2>🏆 Rewards & Leaderboards</h2><div class="panel"><p>Coming soon: verified activities, anti-abuse protections, and prize rules. No points or prizes are currently awarded.</p></div></section>
 <div id="artworkDialog" class="artwork-dialog hidden" role="dialog" aria-modal="true" aria-label="Choose card artwork"><div class="artwork-panel"><button type="button" onclick="closeArtworkDialog()" style="float:right">✕ Close</button><h3>Find Pokémon Artwork</h3><p class="anime-note">Review the card image, set, and number carefully. Confirming a catalog match automatically updates saved set, number, and available year/rarity details. Catalog images require an internet connection.</p><div id="artworkMessage" class="statusline" aria-live="polite"></div><div id="artworkResults" class="artwork-results"></div></div></div>
@@ -341,9 +379,127 @@ function gradeCardChanged(){const v=document.getElementById('gradeCardSelect').v
 function gradeOpenFromVault(){show('grading');if(!vaultCard)return;const i=cards.indexOf(vaultCard);if(i>=0){document.getElementById('gradeCardSelect').value=String(i);gradeCardChanged()}}
 function gradeSetPhoto(side,file){if(!file)return;if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024){document.getElementById('gradeStatus').textContent='Choose a JPG, PNG or WebP under 8 MB.';document.getElementById(side==='front'?'gradeFront':'gradeBack').value='';return}if(gradeObjectUrls[side])URL.revokeObjectURL(gradeObjectUrls[side]);gradeFiles[side]=file;gradeObjectUrls[side]=URL.createObjectURL(file);const img=document.getElementById(side==='front'?'gradeFrontPreview':'gradeBackPreview');img.src=gradeObjectUrls[side];img.classList.remove('hidden');document.getElementById(side==='front'?'gradeFrontEmpty':'gradeBackEmpty').classList.add('hidden');const ready=!!(gradeFiles.front&&gradeFiles.back);document.getElementById('gradeReviewBtn').disabled=!ready;document.getElementById('gradeStatus').textContent=ready?'Both photos loaded. Ready for photo review.':'Photo loaded. Upload the other side to continue.'}
 function gradeResetPhotos(){for(const side of ['front','back']){if(gradeObjectUrls[side])URL.revokeObjectURL(gradeObjectUrls[side]);gradeObjectUrls[side]=null;gradeFiles[side]=null;const img=document.getElementById(side==='front'?'gradeFrontPreview':'gradeBackPreview');img.removeAttribute('src');img.classList.add('hidden');document.getElementById(side==='front'?'gradeFrontEmpty':'gradeBackEmpty').classList.remove('hidden');document.getElementById(side==='front'?'gradeFront':'gradeBack').value=''}document.getElementById('gradeReviewBtn').disabled=true;document.getElementById('gradeStatus').textContent='Upload both sides to continue.'}
-function gradeReviewPhotos(){if(!gradeFiles.front||!gradeFiles.back)return;document.getElementById('gradeStatus').textContent='Both photos are ready. Phase 1 is complete! Automatic AI line detection and zoomable measurement review will be added in the next update. No grade has been calculated.'}
+function gradeReviewPhotos(){
+ if(!gradeFiles.front||!gradeFiles.back)return;
+ document.getElementById('gradeMeasurement').classList.remove('hidden');
+ document.getElementById('gradeStatus').textContent='Both photos ready. Review the suggested cyan and lime lines on both sides; correct them if necessary. No grade has been calculated.';
+ measureStart().catch(e=>{document.getElementById('measureQuality').textContent='Could not prepare photo measurement: '+e.message});
+}
+
 document.getElementById('gradeCardSelect').addEventListener('change',gradeCardChanged);
 document.getElementById('gradeFront').addEventListener('change',e=>gradeSetPhoto('front',e.target.files[0]));
 document.getElementById('gradeBack').addEventListener('change',e=>gradeSetPhoto('back',e.target.files[0]));
+
+// Phase 2: local pixel-gradient suggestions, separate front/back editable guides.
+// These are image-processing heuristics, not a trained AI model or PSA evaluation.
+const measureState={front:null,back:null};
+let measureSide='front',measureLayer='outer',measureDrag=null,measureRequest=0;
+const measureCanvas=document.getElementById('measureCanvas'),measureStage=document.getElementById('measureStage');
+const measureCtx=measureCanvas.getContext('2d');
+const measureClamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const measureRect=(l,t,r,b)=>[[l,t],[r,t],[r,b],[l,b]];
+function measureImage(file){
+ return new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(Error('Image could not be decoded'))};im.src=u});
+}
+function measureDetect(im){
+ const w=320,h=Math.max(160,Math.min(480,Math.round(320*im.naturalHeight/im.naturalWidth)));
+ const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(im,0,0,w,h);
+ const d=x.getImageData(0,0,w,h).data,gray=new Float32Array(w*h);
+ for(let i=0;i<w*h;i++)gray[i]=.2126*d[i*4]+.7152*d[i*4+1]+.0722*d[i*4+2];
+ // Strong vertical/horizontal changes aggregated over central image spans.
+ const xs=new Float32Array(w),ys=new Float32Array(h);
+ for(let y=Math.floor(h*.12);y<h*.88;y+=2)for(let xx=2;xx<w-2;xx++){xs[xx]+=Math.abs(gray[y*w+xx+1]-gray[y*w+xx-2]);}
+ for(let xx=Math.floor(w*.12);xx<w*.88;xx+=2)for(let y=2;y<h-2;y++){ys[y]+=Math.abs(gray[(y+1)*w+xx]-gray[(y-2)*w+xx]);}
+ function peak(arr,a,b){let best=a,bv=-1;for(let i=Math.max(2,Math.floor(a));i<Math.min(arr.length-2,Math.ceil(b));i++){let score=0;for(let k=-2;k<=2;k++)score+=arr[i+k];if(score>bv){best=i;bv=score}}return best}
+ const l=peak(xs,w*.02,w*.33),r=peak(xs,w*.67,w*.98),t=peak(ys,h*.02,h*.33),b=peak(ys,h*.67,h*.98);
+ const plausible=r-l>w*.42&&b-t>h*.42;
+ const o=plausible?measureRect(l/w,t/h,r/w,b/h):measureRect(.07,.06,.93,.94);
+ // Printed-border detection is especially uncertain; offer editable inset only.
+ const insetX=(o[1][0]-o[0][0])*.055,insetY=(o[2][1]-o[1][1])*.055;
+ const inn=measureRect(o[0][0]+insetX,o[0][1]+insetY,o[2][0]-insetX,o[2][1]-insetY);
+ return {outer:o,inner:inn,quality:plausible?'Suggested outer edges found from image contrast. Verify every corner.':'Low confidence: using approximate starter lines. Please adjust all corners.',borderless:false};
+}
+async function measureStart(){
+ const ticket=++measureRequest;
+ for(const side of ['front','back']){
+  const f=gradeFiles[side];if(!f)continue;
+  if(measureState[side]&&measureState[side].file===f)continue;
+  const im=await measureImage(f);if(ticket!==measureRequest)return;
+  const detected=measureDetect(im);
+  measureState[side]={file:f,im,...detected,initial:{outer:detected.outer.map(p=>p.slice()),inner:detected.inner.map(p=>p.slice())},zoom:1,panX:0,panY:0};
+ }
+ measureSwitch(measureSide);
+}
+function measureSwitch(side){
+ if(!measureState[side])return;
+ measureSide=side;
+ document.getElementById('measureFrontBtn').classList.toggle('selected',side==='front');
+ document.getElementById('measureBackBtn').classList.toggle('selected',side==='back');
+ measureDraw();
+}
+function measureSelect(layer){measureLayer=layer;document.getElementById('measureOuterBtn').classList.toggle('selected',layer==='outer');document.getElementById('measureInnerBtn').classList.toggle('selected',layer==='inner');measureDraw()}
+function measureGeometry(){
+ const s=measureState[measureSide],w=measureCanvas.clientWidth,h=measureCanvas.clientHeight;
+ const base=Math.min(w/s.im.naturalWidth,h/s.im.naturalHeight),scale=base*s.zoom;
+ return {w,h,scale,x:(w-s.im.naturalWidth*scale)/2+s.panX,y:(h-s.im.naturalHeight*scale)/2+s.panY};
+}
+function measureScreen(pt,g,s){return [g.x+pt[0]*s.im.naturalWidth*g.scale,g.y+pt[1]*s.im.naturalHeight*g.scale]}
+function measureDraw(){
+ const s=measureState[measureSide];if(!s)return;
+ const ratio=window.devicePixelRatio||1,w=measureCanvas.clientWidth,h=measureCanvas.clientHeight;
+ if(measureCanvas.width!==Math.round(w*ratio)||measureCanvas.height!==Math.round(h*ratio)){measureCanvas.width=Math.round(w*ratio);measureCanvas.height=Math.round(h*ratio)}
+ measureCtx.setTransform(ratio,0,0,ratio,0,0);measureCtx.clearRect(0,0,w,h);
+ const g=measureGeometry();measureCtx.drawImage(s.im,g.x,g.y,s.im.naturalWidth*g.scale,s.im.naturalHeight*g.scale);
+ for(const [layer,color] of [['outer','#54eaff'],['inner','#d6ff49']]){
+  const pts=s[layer].map(p=>measureScreen(p,g,s));measureCtx.beginPath();pts.forEach((p,i)=>i?measureCtx.lineTo(...p):measureCtx.moveTo(...p));measureCtx.closePath();
+  measureCtx.strokeStyle=color;measureCtx.lineWidth=layer===measureLayer?3:2;measureCtx.setLineDash(layer==='inner'?[8,5]:[]);measureCtx.stroke();measureCtx.setLineDash([]);
+  pts.forEach((p,i)=>{measureCtx.beginPath();measureCtx.arc(...p,layer===measureLayer?8:6,0,Math.PI*2);measureCtx.fillStyle=color;measureCtx.fill();measureCtx.lineWidth=2;measureCtx.strokeStyle='#071a2d';measureCtx.stroke()});
+ }
+ document.getElementById('measureBorderless').checked=s.borderless;
+ document.getElementById('measureQuality').textContent=s.quality+' • '+measureSide.toUpperCase()+' • '+s.im.naturalWidth+' × '+s.im.naturalHeight+' px';
+ measureRatios();
+}
+function measureRatios(){
+ const s=measureState[measureSide];if(!s)return;
+ const lr=document.getElementById('measureLR'),tb=document.getElementById('measureTB');
+ if(s.borderless){lr.textContent=tb.textContent='Not measurable';return}
+ const o=s.outer,i=s.inner;
+ const avg=(arr)=>arr.reduce((a,b)=>a+b,0)/arr.length;
+ const left=avg([i[0][0]-o[0][0],i[3][0]-o[3][0]]);
+ const right=avg([o[1][0]-i[1][0],o[2][0]-i[2][0]]);
+ const top=avg([i[0][1]-o[0][1],i[1][1]-o[1][1]]);
+ const bottom=avg([o[3][1]-i[3][1],o[2][1]-i[2][1]]);
+ function ratio(a,b){if(a<=0||b<=0||a+b<.001)return 'Check guides';const v=Math.round(100*a/(a+b));return v+' / '+(100-v)}
+ lr.textContent=ratio(left,right);tb.textContent=ratio(top,bottom);
+}
+function measureSetBorderless(v){const s=measureState[measureSide];if(!s)return;s.borderless=v;measureRatios()}
+function measureZoom(f){const s=measureState[measureSide];if(!s)return;s.zoom=measureClamp(s.zoom*f,1,12);measureDraw()}
+function measureFit(){const s=measureState[measureSide];if(!s)return;s.zoom=1;s.panX=s.panY=0;measureDraw()}
+function measureReset(){const s=measureState[measureSide];if(!s)return;for(const layer of ['outer','inner'])s[layer]=s.initial[layer].map(p=>p.slice());s.borderless=false;measureFit()}
+function measurePointerPos(e){const r=measureCanvas.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]}
+measureCanvas.addEventListener('pointerdown',e=>{
+ const s=measureState[measureSide];if(!s)return;
+ const [x,y]=measurePointerPos(e),g=measureGeometry();
+ let hit=null,best=23;
+ for(const layer of [measureLayer,measureLayer==='outer'?'inner':'outer'])s[layer].forEach((p,index)=>{const q=measureScreen(p,g,s),d=Math.hypot(q[0]-x,q[1]-y);if(d<best){best=d;hit={layer,index}}});
+ measureDrag={hit,x,y,px:s.panX,py:s.panY};
+ if(hit)measureSelect(hit.layer);
+ measureCanvas.setPointerCapture(e.pointerId);measureStage.classList.add('dragging');e.preventDefault();
+});
+measureCanvas.addEventListener('pointermove',e=>{
+ if(!measureDrag)return;const s=measureState[measureSide];if(!s)return;
+ const [x,y]=measurePointerPos(e),g=measureGeometry();
+ if(measureDrag.hit){const p=s[measureDrag.hit.layer][measureDrag.hit.index];p[0]=measureClamp((x-g.x)/(s.im.naturalWidth*g.scale),0,1);p[1]=measureClamp((y-g.y)/(s.im.naturalHeight*g.scale),0,1)}
+ else{s.panX=measureDrag.px+x-measureDrag.x;s.panY=measureDrag.py+y-measureDrag.y}
+ measureDraw();e.preventDefault();
+});
+function measurePointerEnd(){measureDrag=null;measureStage.classList.remove('dragging')}
+measureCanvas.addEventListener('pointerup',measurePointerEnd);measureCanvas.addEventListener('pointercancel',measurePointerEnd);
+measureCanvas.addEventListener('wheel',e=>{if(!measureState[measureSide])return;e.preventDefault();measureZoom(e.deltaY<0?1.13:1/1.13)},{passive:false});
+window.addEventListener('resize',()=>{if(!document.getElementById('gradeMeasurement').classList.contains('hidden'))measureDraw()});
+const previousGradeReset=gradeResetPhotos;
+gradeResetPhotos=function(){++measureRequest;measureState.front=measureState.back=null;document.getElementById('gradeMeasurement').classList.add('hidden');previousGradeReset()};
+const previousGradeSetPhoto=gradeSetPhoto;
+gradeSetPhoto=function(side,file){if(file){measureState[side]=null;document.getElementById('gradeMeasurement').classList.add('hidden')}previousGradeSetPhoto(side,file)};
 </script>
 </body></html>
