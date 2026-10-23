@@ -57,6 +57,13 @@
 .measure-readout small{display:block;margin-bottom:4px}
 .measure-notice{color:#b8d5e7;font-size:12px;line-height:1.6}
 @media(max-width:650px){.measure-stage{height:390px}.measure-lab{padding:12px}}
+/* Phase 3 condition results */
+.grade-result-summary{padding:15px;border:1px solid #3ba7c5;border-radius:12px;background:#092c43;margin:12px 0}
+.grade-result-summary strong{display:block;color:#d6ff49;font-size:30px;margin:5px 0}
+.grade-result-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.grade-result-item{border:1px solid #235f81;background:#0a263b;border-radius:10px;padding:12px}
+.grade-result-item b{color:#b9f3ff}.grade-result-item p{font-size:12px;line-height:1.5;color:#c1d6e4}
+@media(max-width:600px){.grade-result-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -88,7 +95,7 @@
 
 <section id="vault"><div class="vault-shell"><div class="vault-head"><div><div class="vault-eyebrow">⚡ YOUR CARD QUEST</div><h2>Collection Vault</h2></div><button type="button" onclick="show('collection')">← Back to My Collection</button></div><div class="vault-main"><div><div id="vaultArtwork" class="vault-art" role="button" tabindex="0" aria-label="Enlarge card artwork"></div><p class="vault-note">Select the artwork to enlarge it. Images remain saved in this browser.</p></div><div><h3 id="vaultName" class="vault-title">Card Profile</h3><div id="vaultCategory" class="vault-category"></div><div id="vaultFacts" class="vault-facts"></div><div class="vault-qty"><span>Copies owned</span><button type="button" onclick="changeVaultQuantity(-1)" aria-label="Decrease quantity">−</button><strong id="vaultQuantity">1</strong><button type="button" onclick="changeVaultQuantity(1)" aria-label="Increase quantity">+</button></div><div class="vault-actions"><button type="button" onclick="startVaultEdit()">✎ Edit Card Details</button><button type="button" onclick="vaultUploadArtwork()">📷 Change Photo</button><button type="button" id="vaultFindArtwork" onclick="vaultFindPokemonArtwork()">🔎 Find Artwork</button></div><div id="vaultEdit" class="vault-edit hidden"><label>Name<input id="vaultEditName" maxlength="150"></label><label>Category<select id="vaultEditGame"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select></label><label>Set / Product<input id="vaultEditSet" maxlength="150"></label><label>Card number<input id="vaultEditNumber" maxlength="80"></label><label>Year<input id="vaultEditYear" maxlength="40"></label><label>Rarity / Variant<input id="vaultEditRarity" maxlength="100"></label><div class="vault-edit-actions"><button type="button" onclick="saveVaultEdit()">Save Changes</button><button type="button" onclick="cancelVaultEdit()">Cancel</button></div></div></div></div><div class="vault-tabs" role="tablist" aria-label="Vault information"><button type="button" class="selected" id="vaultTabOverview" onclick="setVaultTab('overview')">⚡ Overview</button><button type="button" id="vaultTabValue" onclick="setVaultTab('value')">💲 Value</button><button type="button" id="vaultTabGrading" onclick="setVaultTab('grading')">🛡️ Grading</button></div><div id="vaultTabContent" class="vault-tabpanel" aria-live="polite"></div></div></section>
 <section id="scanner"><h2>📷 Card Scanner</h2><div class="panel"><p>Upload a Pokémon, One Piece, or sports card photo. AI will estimate its identity; verify the details before saving. Each scan uses API credits.</p><input type="file" id="scanFile" accept="image/*" capture="environment"><p><img id="scanPreview" alt="Selected card preview" style="max-width:260px;max-height:350px;display:none;border-radius:10px"></p><button id="identifyCardBtn" onclick="identifyCard()">🔎 Identify Card with AI</button><p id="scanStatus" class="statusline" aria-live="polite"></p><div id="scanResult" class="hidden"><h3>Review AI identification</h3><p class="anime-note">Visual estimate only. Verify against the actual card and catalog before saving.</p><label for="scanName">Card name</label><input id="scanName" maxlength="150"><label for="scanCategory">Category</label><select id="scanCategory"><option>Pokémon</option><option>One Piece</option><option>Sports</option><option>Other TCG</option></select><label for="scanSet">Set / product</label><input id="scanSet" maxlength="150"><label for="scanNumber">Card number</label><input id="scanNumber" maxlength="80"><label for="scanYear">Year</label><input id="scanYear" maxlength="40"><label for="scanRarity">Rarity / variant</label><input id="scanRarity" maxlength="100"><p id="scanConfidence"></p><p id="scanNotes"></p><button onclick="saveScannedCard()">➕ Add reviewed card to My Collection</button></div></div></section>
-<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 1 • Photo Setup</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Photos stay on this device during this first phase; no grading request is sent to AI yet.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
+<section id="grading"><div class="grade-shell"><div class="grade-head"><div><div class="vault-eyebrow">⚡ TCG QUEST • GRADING LAB</div><h2>🛡️ AI Grading Helper</h2></div><span class="eyebrow">Phase 3 • Condition Screening</span></div><p class="grade-status">Choose a saved card or inspect a new card. Upload clear front and back photos to prepare for grading. Photos stay on this device for local measurement and preliminary condition screening; no grading request is sent to AI.</p><div class="panel"><label for="gradeCardSelect">Choose a saved card (optional)</label><select id="gradeCardSelect"><option value="">New card / standalone inspection</option></select><p id="gradeCardInfo" class="grade-status" aria-live="polite">New card inspection</p></div><div class="grade-grid"><div class="grade-photo"><h3>📷 Card Front <small>Required</small></h3><label for="gradeFront">Upload front photo</label><input id="gradeFront" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeFrontEmpty" class="empty-preview">Front photo preview appears here</div><img id="gradeFrontPreview" class="hidden" alt="Uploaded card front"></div><div class="grade-photo"><h3>📷 Card Back <small>Required</small></h3><label for="gradeBack">Upload back photo</label><input id="gradeBack" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="gradePhotoHelp"><div id="gradeBackEmpty" class="empty-preview">Back photo preview appears here</div><img id="gradeBackPreview" class="hidden" alt="Uploaded card back"></div></div><div class="notice" id="gradePhotoHelp">For best results: photograph both sides straight-on, include all four corners, avoid glare, and use a contrasting background. Card catalog artwork is not a substitute for photos of your physical card.</div><div class="grade-actions"><button type="button" id="gradeReviewBtn" disabled onclick="gradeReviewPhotos()">✓ Review Both Photos</button><button type="button" onclick="gradeResetPhotos()">↺ Clear Photos</button></div><p id="gradeStatus" class="grade-status" aria-live="polite">Upload both sides to continue.</p>
 <div id="gradeMeasurement" class="measure-lab hidden">
   <h3>📐 Phase 2 — Photo Measurement Review</h3>
   <p class="measure-help">Automatic local image-based edge suggestions appear first. Review both outlines carefully; lighting, artwork, glare, and borderless cards can cause errors. This is a browser-based detection aid, not yet AI grading.</p>
@@ -107,7 +114,14 @@
   <div class="measure-readouts"><div class="measure-readout"><small>Left / Right centering</small><strong id="measureLR">—</strong></div><div class="measure-readout"><small>Top / Bottom centering</small><strong id="measureTB">—</strong></div></div>
   <p class="measure-notice" id="measureQuality" aria-live="polite"></p>
   <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="measureBorderless" style="width:auto" onchange="measureSetBorderless(this.checked)">Printed border cannot be reliably measured / borderless design</label>
-  <p class="measure-notice">Centering figures are approximate measurements from the selected guides, not a PSA grade. Phase 3 will connect AI analysis of corners, edges, and surface, and allow rerunning the assessment after corrections.</p>
+  <div class="panel" id="gradeAnalysisPanel" style="margin-top:18px">
+    <h3>🔎 Phase 3 — Preliminary Condition Report</h3>
+    <p class="measure-help">Finish correcting the cyan and lime guides on BOTH sides, then analyze. This first version uses local image-processing estimates, not a trained AI grading model. Photos stay on your device.</p>
+    <button type="button" id="gradeAnalyzeBtn" onclick="gradeAnalyzeCard()">🔎 Analyze My Card</button>
+    <p id="gradeAnalysisStatus" class="measure-notice" aria-live="polite">Ready when both sides have been reviewed.</p>
+    <div id="gradeAnalysisResult" class="hidden" aria-live="polite"></div>
+  </div>
+  <p class="measure-notice">Centering and condition estimates are not an official PSA grade. Surface scratches, tiny whitening, dents, and print defects may be missed in photos.</p>
 </div>
 </div></section>
 <section id="prices"><h2>💲 Compare Prices</h2><div class="panel"><p>Marketplace comparisons will appear after a live pricing source is connected.</p></div></section>
@@ -552,5 +566,71 @@ const previousGradeReset=gradeResetPhotos;
 gradeResetPhotos=function(){++measureRequest;measureState.front=measureState.back=null;document.getElementById('gradeMeasurement').classList.add('hidden');previousGradeReset()};
 const previousGradeSetPhoto=gradeSetPhoto;
 gradeSetPhoto=function(side,file){if(file){measureState[side]=null;document.getElementById('gradeMeasurement').classList.add('hidden')}previousGradeSetPhoto(side,file)};
+
+// Phase 3: transparent local screening. No backend grading endpoint is configured.
+let gradeReportReady=false;
+function gradeMarkAnalysisStale(){
+ const result=document.getElementById('gradeAnalysisResult');
+ if(result&&!result.classList.contains('hidden')){
+  document.getElementById('gradeAnalysisStatus').textContent='Guides or photos changed. Click Analyze My Card again for updated results.';
+  result.classList.add('hidden');
+ }
+}
+function gradeSideMargins(s){
+ if(s.borderless)return null;
+ const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
+ const o=s.outer,i=s.inner;
+ const margins=[avg([0,7,6].map(k=>i[k][0]-o[k][0])),avg([2,3,4].map(k=>o[k][0]-i[k][0])),avg([0,1,2].map(k=>i[k][1]-o[k][1])),avg([6,5,4].map(k=>o[k][1]-i[k][1]))];
+ if(margins.some(v=>!Number.isFinite(v)||v<=0))return null;
+ return {lr:100*margins[0]/(margins[0]+margins[1]),tb:100*margins[2]/(margins[2]+margins[3])};
+}
+function gradeLocalVisualScreen(s){
+ // Inspect narrow areas just INSIDE the corrected card outline, using grayscale
+ // gradients. This detects visible variation, NOT confirmed wear or scratches.
+ const size=420,c=document.createElement('canvas');c.width=size;c.height=size;
+ const cx=c.getContext('2d',{willReadFrequently:true});cx.drawImage(s.im,0,0,size,size);
+ const d=cx.getImageData(0,0,size,size).data;
+ const lum=(x,y)=>{x=Math.max(0,Math.min(size-1,Math.round(x)));y=Math.max(0,Math.min(size-1,Math.round(y)));const k=4*(y*size+x);return .2126*d[k]+.7152*d[k+1]+.0722*d[k+2]};
+ const corners=[s.outer[0],s.outer[2],s.outer[4],s.outer[6]];
+ let cornerVariation=0,cornerSamples=0;
+ for(const [nx,ny] of corners){const x=nx*size,y=ny*size;for(let dy=-7;dy<=7;dy+=3)for(let dx=-7;dx<=7;dx+=3){cornerVariation+=Math.abs(lum(x+dx+2,y+dy)-lum(x+dx,y+dy));cornerSamples++}}
+ let edgeVariation=0,edgeSamples=0;
+ for(let k=0;k<8;k+=2){const a=s.outer[k],b=s.outer[(k+2)%8];for(let t=.12;t<=.88;t+=.045){const x=(a[0]*(1-t)+b[0]*t)*size,y=(a[1]*(1-t)+b[1]*t)*size;edgeVariation+=Math.abs(lum(x+2,y+2)-lum(x-2,y-2));edgeSamples++}}
+ // Broad image contrast is NOT a surface-condition measurement; report visibility only.
+ let bright=0,dark=0,total=0;
+ for(let y=0;y<size;y+=7)for(let x=0;x<size;x+=7){const q=lum(x,y);if(q>245)bright++;if(q<12)dark++;total++}
+ return {cornerVariation:cornerVariation/Math.max(1,cornerSamples),edgeVariation:edgeVariation/Math.max(1,edgeSamples),glareFraction:bright/total,darkFraction:dark/total};
+}
+function gradeAnalyzeCard(){
+ const front=measureState.front,back=measureState.back;
+ const status=document.getElementById('gradeAnalysisStatus'),out=document.getElementById('gradeAnalysisResult');
+ if(!front||!back){status.textContent='Upload and review both card photos first.';return}
+ const f=gradeSideMargins(front),b=gradeSideMargins(back);
+ if(!f&&!b){status.textContent='Centering cannot be measured on either side. Correct the printed-border guides or disable borderless mode where appropriate.';return}
+ const sides=[['Front',front,f],['Back',back,b]];
+ const valid=sides.filter(x=>x[2]);
+ const worst=Math.max(...valid.flatMap(x=>[Math.abs(x[2].lr-50),Math.abs(x[2].tb-50)]));
+ // Only centering contributes to numeric estimate; no fabricated corner/surface grade.
+ const centeringBand=worst<=5?'approximately 55/45 or better':worst<=10?'approximately 60/40 or better':worst<=15?'approximately 65/35 or better':'outside approximately 65/35';
+ const visual=sides.map(([name,s])=>({name,...gradeLocalVisualScreen(s)}));
+ const glare=visual.some(v=>v.glareFraction>.08);
+ const numericEstimate=worst<=5?'8–10':worst<=10?'6–9':worst<=15?'4–8':'1–7';
+ out.replaceChildren();
+ const summary=document.createElement('div');summary.className='grade-result-summary';
+ const title=document.createElement('div');title.textContent='Preliminary centering-based grade range (NOT a PSA prediction)';
+ const number=document.createElement('strong');number.textContent=numericEstimate+' / 10';
+ const caution=document.createElement('small');caution.textContent='Wide screening range based on centering only. Corners, edges, surface, print quality and hidden defects may lower the final grade substantially.';
+ summary.append(title,number,caution);out.append(summary);
+ const grid=document.createElement('div');grid.className='grade-result-grid';
+ function item(label,message){const box=document.createElement('div');box.className='grade-result-item';const h=document.createElement('b');h.textContent=label;const p=document.createElement('p');p.textContent=message;box.append(h,p);grid.append(box)}
+ item('📐 Centering',centeringBand+'. '+sides.map(([name,s,m])=>name+': '+(m?'L/R '+Math.round(m.lr)+'/'+Math.round(100-m.lr)+' • T/B '+Math.round(m.tb)+'/'+Math.round(100-m.tb):'not measurable')).join(' | ')+'. Based on your corrected guides.');
+ item('🔷 Corners','Local photo screening completed for all four corners on both sides. Edge contrast can reflect printing, glare, or wear; it cannot reliably distinguish corner whitening or damage. Zoom in to inspect each corner.');
+ item('📏 Edges','Local edge-region screening completed on both sides. Printed patterns and shadows can resemble chips or whitening. Inspect the physical card and close-up photos for actual damage.');
+ item('✨ Surface',glare?'Bright areas detected that may conceal surface defects. Retake photos with softer, angled lighting to assess scratches, dents, and print lines.':'No major bright-area warning from the image sample. Scratches, dents, and print lines still cannot be reliably ruled out from these photos.');
+ item('🛡️ Assessment status','This is a browser-based condition screening, not trained AI grading and not an official PSA assessment. A dedicated backend vision model and validation against graded cards are needed for an AI-based grade prediction.');
+ out.append(grid);out.classList.remove('hidden');
+ status.textContent='Preliminary report generated using the current front and back guide positions. Photos were processed locally.';
+}
+
 </script>
 </body></html>
