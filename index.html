@@ -134,6 +134,12 @@
   <p class="measure-help" id="measureInstruction">Drag any of the eight colored control points (four inward-facing corners and four side midpoints) to correct its position. Drag elsewhere to pan. Use the mouse wheel or zoom buttons to magnify. Each side remembers its own corrections.</p>
   <div class="measure-readouts"><div class="measure-readout"><small>Left / Right centering</small><strong id="measureLR">—</strong></div><div class="measure-readout"><small>Top / Bottom centering</small><strong id="measureTB">—</strong></div></div>
   <p class="measure-notice" id="measureQuality" aria-live="polite"></p>
+  <div style="border:1px solid #f5bd46;border-radius:10px;padding:12px;margin:10px 0;background:#211d14;color:#fff2cf">
+    <strong id="measureVerifyStatus">⚠ Centering NOT VERIFIED</strong>
+    <p style="margin:7px 0">Automatic guide positions are suggestions, NOT measured centering. Zoom in and check all four cyan and lime edges. If the printed artwork boundary cannot be identified, keep the borderless checkbox checked.</p>
+    <button type="button" id="measureVerifyBtn" onclick="measureVerifySide()">✓ I reviewed BOTH outlines on this side</button>
+    <p style="font-size:12px;margin:7px 0 0">This is a manual guide review, not independent proof of measurement accuracy. Editing or resetting a guide cancels verification.</p>
+  </div>
   <label style="display:flex;gap:9px;align-items:center"><input type="checkbox" id="measureBorderless" style="width:auto" onchange="measureSetBorderless(this.checked)">Printed border cannot be reliably measured / borderless design</label>
   <div class="panel" id="gradeAnalysisPanel" style="margin-top:18px">
     <h3>🔎 Phase 3 — Preliminary Condition Report</h3>
@@ -566,7 +572,7 @@ async function measureStart(){
   if(measureState[side]&&measureState[side].file===f)continue;
   const im=await measureImage(f);if(ticket!==measureRequest)return;
   const detected=measureDetect(im);
-  measureState[side]={file:f,im,...detected,initial:{outer:detected.outer.map(p=>p.slice()),inner:detected.inner.map(p=>p.slice())},zoom:1,panX:0,panY:0};
+  measureState[side]={file:f,im,...detected,initial:{outer:detected.outer.map(p=>p.slice()),inner:detected.inner.map(p=>p.slice())},zoom:1,panX:0,panY:0,verified:false,initialBorderless:detected.borderless};
  }
  measureSwitch(measureSide);
 }
@@ -609,12 +615,15 @@ function measureDraw(){
  }
  document.getElementById('measureBorderless').checked=s.borderless;
  document.getElementById('measureQuality').textContent=s.quality+' • '+measureSide.toUpperCase()+' • '+s.im.naturalWidth+' × '+s.im.naturalHeight+' px';
+ const v=document.getElementById('measureVerifyStatus');if(v)v.textContent=s.borderless?'⚠ Printed border not measurable':s.verified?'✓ Guides manually reviewed — estimate only':'⚠ Centering NOT VERIFIED';
+ const vb=document.getElementById('measureVerifyBtn');if(vb)vb.disabled=!!s.borderless;
  measureRatios();
 }
 function measureRatios(){
  const s=measureState[measureSide];if(!s)return;
  const lr=document.getElementById('measureLR'),tb=document.getElementById('measureTB');
  if(s.borderless){lr.textContent=tb.textContent='Not measurable';return}
+ if(!s.verified){lr.textContent=tb.textContent='Centering not verified';return}
  const o=s.outer,i=s.inner;
  const avg=(arr)=>arr.reduce((a,b)=>a+b,0)/arr.length;
    // Measure three corresponding guide locations on every side, including adjustable midpoints.
@@ -624,10 +633,11 @@ function measureRatios(){
   const bottom=avg([6,5,4].map(k=>o[k][1]-i[k][1]));function ratio(a,b){if(a<=0||b<=0||a+b<.001)return 'Check guides';const v=Math.round(100*a/(a+b));return v+' / '+(100-v)}
  lr.textContent=ratio(left,right);tb.textContent=ratio(top,bottom);
 }
-function measureSetBorderless(v){const s=measureState[measureSide];if(!s)return;s.borderless=v;measureRatios();phase6CenteringRender()}
+function measureVerifySide(){const s=measureState[measureSide];if(!s||s.borderless)return;s.verified=true;measureDraw();phase6CenteringRender();gradeMarkAnalysisStale()}
+function measureSetBorderless(v){const s=measureState[measureSide];if(!s)return;s.borderless=v;s.verified=false;measureDraw();phase6CenteringRender();gradeMarkAnalysisStale()}
 function measureZoom(f){const s=measureState[measureSide];if(!s)return;s.zoom=measureClamp(s.zoom*f,1,12);measureDraw()}
 function measureFit(){const s=measureState[measureSide];if(!s)return;s.zoom=1;s.panX=s.panY=0;measureDraw()}
-function measureReset(){const s=measureState[measureSide];if(!s)return;for(const layer of ['outer','inner'])s[layer]=s.initial[layer].map(p=>p.slice());s.borderless=false;measureFit()}
+function measureReset(){const s=measureState[measureSide];if(!s)return;for(const layer of ['outer','inner'])s[layer]=s.initial[layer].map(p=>p.slice());s.borderless=s.initialBorderless??s.borderless;s.verified=false;measureFit();gradeMarkAnalysisStale()}
 function measurePointerPos(e){const r=measureCanvas.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]}
 measureCanvas.addEventListener('pointerdown',e=>{
  const s=measureState[measureSide];if(!s)return;
@@ -641,7 +651,7 @@ measureCanvas.addEventListener('pointerdown',e=>{
 measureCanvas.addEventListener('pointermove',e=>{
  if(!measureDrag)return;const s=measureState[measureSide];if(!s)return;
  const [x,y]=measurePointerPos(e),g=measureGeometry();
- if(measureDrag.hit){const p=s[measureDrag.hit.layer][measureDrag.hit.index];p[0]=measureClamp((x-g.x)/(s.im.naturalWidth*g.scale),0,1);p[1]=measureClamp((y-g.y)/(s.im.naturalHeight*g.scale),0,1)}
+ if(measureDrag.hit){const p=s[measureDrag.hit.layer][measureDrag.hit.index];p[0]=measureClamp((x-g.x)/(s.im.naturalWidth*g.scale),0,1);p[1]=measureClamp((y-g.y)/(s.im.naturalHeight*g.scale),0,1);s.verified=false;gradeMarkAnalysisStale()}
  else{s.panX=measureDrag.px+x-measureDrag.x;s.panY=measureDrag.py+y-measureDrag.y}
  measureDraw();e.preventDefault();
 });
@@ -664,7 +674,7 @@ function gradeMarkAnalysisStale(){
  }
 }
 function gradeSideMargins(s){
- if(s.borderless)return null;
+ if(s.borderless||!s.verified)return null;
  const avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
  const o=s.outer,i=s.inner;
  const margins=[avg([0,7,6].map(k=>i[k][0]-o[k][0])),avg([2,3,4].map(k=>o[k][0]-i[k][0])),avg([0,1,2].map(k=>i[k][1]-o[k][1])),avg([6,5,4].map(k=>o[k][1]-i[k][1]))];
@@ -693,24 +703,24 @@ function gradeAnalyzeLocalCard(){
  const status=document.getElementById('gradeAnalysisStatus'),out=document.getElementById('gradeAnalysisResult');
  if(!front||!back){status.textContent='Upload and review both card photos first.';return}
  const f=gradeSideMargins(front),b=gradeSideMargins(back);
- if(!f&&!b){status.textContent='Centering cannot be measured on either side. Correct the printed-border guides or disable borderless mode where appropriate.';return}
+ if(!f&&!b){status.textContent='Centering NOT VERIFIED on either side. You may still request AI condition observations; any grade is uncertain.';}
  const sides=[['Front',front,f],['Back',back,b]];
  const valid=sides.filter(x=>x[2]);
- const worst=Math.max(...valid.flatMap(x=>[Math.abs(x[2].lr-50),Math.abs(x[2].tb-50)]));
+ const worst=valid.length?Math.max(...valid.flatMap(x=>[Math.abs(x[2].lr-50),Math.abs(x[2].tb-50)])):null;
  // Only centering contributes to numeric estimate; no fabricated corner/surface grade.
- const centeringBand=worst<=5?'approximately 55/45 or better':worst<=10?'approximately 60/40 or better':worst<=15?'approximately 65/35 or better':'outside approximately 65/35';
+ const centeringBand=worst===null?'unverified':worst<=5?'approximately 55/45 or better':worst<=10?'approximately 60/40 or better':worst<=15?'approximately 65/35 or better':'outside approximately 65/35';
  const visual=sides.map(([name,s])=>({name,...gradeLocalVisualScreen(s)}));
  const glare=visual.some(v=>v.glareFraction>.08);
- const numericEstimate=worst<=5?'8–10':worst<=10?'6–9':worst<=15?'4–8':'1–7';
+ const numericEstimate=valid.length!==2?'Not available — centering unverified':worst<=5?'8–10':worst<=10?'6–9':worst<=15?'4–8':'1–7';
  out.replaceChildren();
  const summary=document.createElement('div');summary.className='grade-result-summary';
  const title=document.createElement('div');title.textContent='Preliminary centering-based grade range (NOT a PSA prediction)';
  const number=document.createElement('strong');number.textContent=numericEstimate+' / 10';
- const caution=document.createElement('small');caution.textContent='Wide screening range based on centering only. Corners, edges, surface, print quality and hidden defects may lower the final grade substantially.';
+ const caution=document.createElement('small');caution.textContent=valid.length!==2?'A numeric centering-based grade is withheld until BOTH sides have manually reviewed measurable borders. Do not assume 50/50 or PSA 10.':'Wide screening range based on manually reviewed guide positions only. Review is not proof of accuracy; other defects may lower the grade.';
  summary.append(title,number,caution);out.append(summary);
  const grid=document.createElement('div');grid.className='grade-result-grid';
  function item(label,message){const box=document.createElement('div');box.className='grade-result-item';const h=document.createElement('b');h.textContent=label;const p=document.createElement('p');p.textContent=message;box.append(h,p);grid.append(box)}
- item('📐 Centering',centeringBand+'. '+sides.map(([name,s,m])=>name+': '+(m?'L/R '+Math.round(m.lr)+'/'+Math.round(100-m.lr)+' • T/B '+Math.round(m.tb)+'/'+Math.round(100-m.tb):'not measurable')).join(' | ')+'. Based on your corrected guides.');
+ item('📐 Centering',centeringBand+'. '+sides.map(([name,s,m])=>name+': '+(m?'L/R '+Math.round(m.lr)+'/'+Math.round(100-m.lr)+' • T/B '+Math.round(m.tb)+'/'+Math.round(100-m.tb):'not measurable')).join(' | ')+'. Only manually reviewed guide positions are displayed; not a laboratory measurement.');
  item('🔷 Corners','Local photo screening completed for all four corners on both sides. Edge contrast can reflect printing, glare, or wear; it cannot reliably distinguish corner whitening or damage. Zoom in to inspect each corner.');
  item('📏 Edges','Local edge-region screening completed on both sides. Printed patterns and shadows can resemble chips or whitening. Inspect the physical card and close-up photos for actual damage.');
  item('✨ Surface',glare?'Bright areas detected that may conceal surface defects. Retake photos with softer, angled lighting to assess scratches, dents, and print lines.':'No major bright-area warning from the image sample. Scratches, dents, and print lines still cannot be reliably ruled out from these photos.');
@@ -807,7 +817,7 @@ async function gradeAnalyzeCard(){
       const gradeNumber=document.createElement('strong');gradeNumber.textContent=estimated+' / 10';
       const gradeRange=document.createElement('p');gradeRange.textContent='Uncertainty range: '+low+'–'+high+' / 10';
       const gradeReason=document.createElement('p');gradeReason.textContent=String(payload.grading.grade_reason||'Based on visible condition in the photos.');
-      const gradeWarning=document.createElement('small');gradeWarning.textContent='AI visual estimate only. Not affiliated with PSA; hidden defects, lighting, and image quality can change the actual grade.';
+      const gradeWarning=document.createElement('small');gradeWarning.textContent=(gradeSideMargins(measureState.front)&&gradeSideMargins(measureState.back)?'Both sides have manually reviewed guide-based centering estimates. ':'⚠ CENTERING UNVERIFIED on one or both sides. This AI number does NOT establish centering or PSA 10 eligibility. ')+'AI visual estimate only; not affiliated with PSA. Hidden defects, lighting, and photo quality may change the actual grade.';
       gradeSummary.append(gradeTitle,gradeNumber,gradeRange,gradeReason,gradeWarning);
       aiBox.insertBefore(gradeSummary,grid);
     }else{
@@ -894,8 +904,8 @@ gradeSetPhoto=function(side,file){if(file)phase5Clear();phase5OldSetPhoto(side,f
 let phase6Current=null,phase6StoredViewing=false;
 const phase6Db=new Promise((resolve,reject)=>{const r=indexedDB.open('tcgquest-v4-grading-history',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('inspections'))r.result.createObjectStore('inspections',{keyPath:'id'})};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
 async function phase6Store(mode,item){const db=await phase6Db;return new Promise((resolve,reject)=>{const tx=db.transaction('inspections',mode==='getall'?'readonly':'readwrite');const st=tx.objectStore('inspections');const req=mode==='getall'?st.getAll():mode==='delete'?st.delete(item):st.put(item);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error)})}
-function phase6Margins(side){const state=measureState[side];if(!state)return null;const m=gradeSideMargins(state);if(!m)return null;return {lr:+m.lr.toFixed(1),tb:+m.tb.toFixed(1),borderless:!!state.borderless,quality:state.quality};}
-function phase6CenteringRender(){const target=document.getElementById('phase6Centering');if(!target)return;target.replaceChildren();for(const side of ['front','back']){const m=phase6Margins(side);const box=document.createElement('div');box.className='phase6-stat';const label=document.createElement('b');label.textContent=side.toUpperCase()+' • reviewed guides';const value=document.createElement('span');value.textContent=m?'L/R '+m.lr.toFixed(1)+' / '+(100-m.lr).toFixed(1)+'  •  T/B '+m.tb.toFixed(1)+' / '+(100-m.tb).toFixed(1):'Not measurable';const note=document.createElement('small');note.textContent='Calculated from adjustable outer and printed-border guides; verify their alignment.';box.append(label,value,note);target.append(box)}}
+function phase6Margins(side){const state=measureState[side];if(!state)return null;const m=gradeSideMargins(state);if(!m)return null;return {lr:+m.lr.toFixed(1),tb:+m.tb.toFixed(1),borderless:!!state.borderless,verified:true,quality:state.quality};}
+function phase6CenteringRender(){const target=document.getElementById('phase6Centering');if(!target)return;target.replaceChildren();for(const side of ['front','back']){const m=phase6Margins(side);const box=document.createElement('div');box.className='phase6-stat';const label=document.createElement('b');label.textContent=side.toUpperCase()+' • reviewed guides';const value=document.createElement('span');value.textContent=m?'L/R '+m.lr.toFixed(1)+' / '+(100-m.lr).toFixed(1)+'  •  T/B '+m.tb.toFixed(1)+' / '+(100-m.tb).toFixed(1):'Not verified / not measurable';const note=document.createElement('small');note.textContent='Only manually reviewed guides are shown. This is an estimate, not independent measurement.';box.append(label,value,note);target.append(box)}}
 function phase6Clear(){phase6Current=null;phase6StoredViewing=false;for(const id of ['phase6SaveBtn','phase6PrintBtn'])document.getElementById(id).disabled=true;document.getElementById('phase6Status').textContent='Run an AI inspection to enable saving and printing.';phase6DrawZones();phase6CenteringRender()}
 function phase6Capture(payload){phase6StoredViewing=false;const v=document.getElementById('gradeCardSelect').value;const card=v===''?null:cards[Number(v)];phase6Current={id:'grading-'+Date.now()+'-'+Math.random().toString(36).slice(2,9),date:new Date().toISOString(),cardName:card?.name||'Standalone card',cardInfo:card?[card.game,card.set,card.number].filter(Boolean).join(' • '):'',grading:payload.grading,centering:{front:phase6Margins('front'),back:phase6Margins('back')},front:null,back:null};for(const id of ['phase6SaveBtn','phase6PrintBtn'])document.getElementById(id).disabled=false;document.getElementById('phase6Status').textContent='Inspection ready. Save it to your browser or print a report.';phase6CenteringRender();phase6DrawZones()}
 function phase6ZoneCoordinates(index){const points=[[.06,.06,.18,.18],[.26,.04,.48,.13],[.76,.06,.18,.18],[.85,.26,.13,.48],[.76,.76,.18,.18],[.26,.83,.48,.13],[.06,.76,.18,.18],[.02,.26,.13,.48]];return points[index]}
@@ -907,7 +917,7 @@ async function phase6SaveCurrent(){if(!phase6Current)return;const b=document.get
 function phase6Make(tag,text,cls){const el=document.createElement(tag);if(text!=null)el.textContent=text;if(cls)el.className=cls;return el}
 async function phase6RenderHistory(){const root=document.getElementById('phase6History');root.replaceChildren();let items;try{items=(await phase6Store('getall')).sort((a,b)=>b.date.localeCompare(a.date))}catch(e){root.textContent='Browser history unavailable: '+e.message;return}if(!items.length){root.textContent='No saved grading reports yet.';return}for(const item of items){const row=phase6Make('div',null,'phase6-entry');if(item.front){const img=document.createElement('img');img.src=item.front;img.alt='Saved card front';row.append(img)}const info=phase6Make('div',null,'phase6-meta');info.append(phase6Make('b',item.cardName||'Card'),phase6Make('small',new Date(item.date).toLocaleString()+' • Estimated '+(item.grading?.estimated_grade??'—')+'/10'));const open=phase6Make('button','View Report');open.onclick=()=>phase6OpenHistory(item);const del=phase6Make('button','Delete');del.onclick=async()=>{if(!confirm('Permanently delete this saved grading report from this browser?'))return;await phase6Store('delete',item.id);phase6RenderHistory()};row.append(info,open,del);root.append(row)}}
 function phase6OpenHistory(item){phase6Current=item;phase6StoredViewing=true;document.getElementById('phase6PrintBtn').disabled=false;document.getElementById('phase6SaveBtn').disabled=false;document.getElementById('phase6Status').textContent='Saved report loaded for printing. To inspect its markers, run a new analysis with uploaded photos.';phase6PrintCurrent()}
-function phase6PrintCurrent(){const r=phase6Current;if(!r)return;const root=document.getElementById('phase6Print');root.replaceChildren();root.append(phase6Make('h2','TCG QUEST • Grading Inspection Report'),phase6Make('p','Unofficial AI photo assessment • '+new Date(r.date).toLocaleString()),phase6Make('h3',r.cardName||'Card'),phase6Make('p',r.cardInfo||''));const g=r.grading||{};root.append(phase6Make('h2','AI grade estimate: '+(g.estimated_grade??'Not available')+'/10'),phase6Make('p','Uncertainty range: '+(g.grade_low??'—')+'–'+(g.grade_high??'—')+'/10'),phase6Make('p',g.grade_reason||''));const photos=phase6Make('div',null,'print-photos');for(const side of ['front','back']){const src=r[side]||(!phase6StoredViewing?gradeObjectUrls[side]:null);if(src){const im=document.createElement('img');im.src=src;im.alt=side+' card photo';photos.append(im)}}root.append(photos);root.append(phase6Make('h3','Reviewed centering'));for(const side of ['front','back']){const m=r.centering?.[side];root.append(phase6Make('p',side.toUpperCase()+': '+(m?'L/R '+m.lr.toFixed(1)+'/'+(100-m.lr).toFixed(1)+'; T/B '+m.tb.toFixed(1)+'/'+(100-m.tb).toFixed(1):'Not measurable')))}root.append(phase6Make('h3','Condition summary'));for(const field of ['corners','edges','surface','photo_quality','overall_notes'])root.append(phase6Make('p',field.replace('_',' ').toUpperCase()+': '+(g[field]||'Not assessed')));root.append(phase6Make('h3','16 location observations'));for(const side of ['front','back']){root.append(phase6Make('h3',side.toUpperCase()));for(const [area,key,label] of phase5Locations){const txt=g.detailed_inspection?.[side]?.[area]?.[key]||'Cannot assess reliably';root.append(phase6Make('div',label+': '+txt,'print-observation'))}}root.append(phase6Make('p','Experimental, photo-based assessment only. Suspected issue zones are approximate areas, not confirmed pixel-level detections. This is not an official PSA grade. Browser-saved history is not cloud-synced.'));const imgs=[...root.querySelectorAll('img')];Promise.all(imgs.map(im=>im.complete?Promise.resolve():new Promise(done=>{im.onload=done;im.onerror=done}))).then(()=>window.print())}
+function phase6PrintCurrent(){const r=phase6Current;if(!r)return;const root=document.getElementById('phase6Print');root.replaceChildren();root.append(phase6Make('h2','TCG QUEST • Grading Inspection Report'),phase6Make('p','Unofficial AI photo assessment • '+new Date(r.date).toLocaleString()),phase6Make('h3',r.cardName||'Card'),phase6Make('p',r.cardInfo||''));const g=r.grading||{};root.append(phase6Make('h2','Unofficial AI photo estimate: '+(g.estimated_grade??'Not available')+'/10'),phase6Make('p','Uncertainty range: '+(g.grade_low??'—')+'–'+(g.grade_high??'—')+'/10'),phase6Make('p',g.grade_reason||''));const photos=phase6Make('div',null,'print-photos');for(const side of ['front','back']){const src=r[side]||(!phase6StoredViewing?gradeObjectUrls[side]:null);if(src){const im=document.createElement('img');im.src=src;im.alt=side+' card photo';photos.append(im)}}root.append(photos);if(!r.centering?.front||!r.centering?.back)root.append(phase6Make('p','WARNING: Centering not verified on both sides. AI grade does not establish PSA 10 eligibility.'));root.append(phase6Make('h3','Reviewed centering')); for(const side of ['front','back']){const m=r.centering?.[side];root.append(phase6Make('p',side.toUpperCase()+': '+(m?'L/R '+m.lr.toFixed(1)+'/'+(100-m.lr).toFixed(1)+'; T/B '+m.tb.toFixed(1)+'/'+(100-m.tb).toFixed(1):'Not verified / not measurable')))}root.append(phase6Make('h3','Condition summary'));for(const field of ['corners','edges','surface','photo_quality','overall_notes'])root.append(phase6Make('p',field.replace('_',' ').toUpperCase()+': '+(g[field]||'Not assessed')));root.append(phase6Make('h3','16 location observations'));for(const side of ['front','back']){root.append(phase6Make('h3',side.toUpperCase()));for(const [area,key,label] of phase5Locations){const txt=g.detailed_inspection?.[side]?.[area]?.[key]||'Cannot assess reliably';root.append(phase6Make('div',label+': '+txt,'print-observation'))}}root.append(phase6Make('p','Experimental, photo-based assessment only. Suspected issue zones are approximate areas, not confirmed pixel-level detections. This is not an official PSA grade. Browser-saved history is not cloud-synced.'));const imgs=[...root.querySelectorAll('img')];Promise.all(imgs.map(im=>im.complete?Promise.resolve():new Promise(done=>{im.onload=done;im.onerror=done}))).then(()=>window.print())}
 phase6RenderHistory();phase6CenteringRender();
 
 </script>
