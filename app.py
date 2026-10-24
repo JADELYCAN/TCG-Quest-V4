@@ -362,7 +362,6 @@ import statistics
 
 _ebay_lock = threading.Lock()
 _ebay_token = {'value': None, 'expires': 0}
-_ebay_cache = {}
 _ebay_requests = defaultdict(deque)
 
 
@@ -459,11 +458,6 @@ def ebay_prices():
     if len(rate) >= 12:
         return jsonify(error='Too many price lookups. Try again in a minute.'), 429
     rate.append(now)
-    cache_key = query.casefold()
-    with _ebay_lock:
-        cached = _ebay_cache.get(cache_key)
-        if cached and time.time() - cached[0] < 600:
-            return jsonify(cached[1])
     try:
         token = _ebay_access_token()
         result = {grade: _ebay_bucket(query, grade, token) for grade in ('raw', '9', '10')}
@@ -477,10 +471,6 @@ def ebay_prices():
                'retrieved_at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
                'grades': result,
                'disclaimer': 'Active listing asking prices are not completed-sale market values. Search results may include mismatched variants; verify card, set, number and condition.'}
-    with _ebay_lock:
-        if len(_ebay_cache) > 150:
-            _ebay_cache.clear()
-        _ebay_cache[cache_key] = (time.time(), payload)
     return jsonify(payload)
 
 @app.errorhandler(413)
