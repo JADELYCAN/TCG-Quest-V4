@@ -353,6 +353,136 @@ def grade_card():
         ), 502        
    
                 
+
+
+# V8 Phase 7 — eBay active listing research (NOT completed-sale values).
+# Production eBay OAuth credentials must be stored in Render environment variables.
+import threading
+import statistics
+
+_ebay_lock = threading.Lock()
+_ebay_token = {'value': None, 'expires': 0}
+_ebay_cache = {}
+_ebay_requests = defaultdict(deque)
+
+
+def _ebay_access_token():
+    now = time.time()
+    with _ebay_lock:
+        if _ebay_token['value'] and now < _ebay_token['expires']:
+            return _ebay_token['value']
+        client_id = os.getenv('EBAY_CLIENT_ID')
+        client_secret = os.getenv('EBAY_CLIENT_SECRET')
+        if not client_id or not client_secret:
+            raise RuntimeError('eBay credentials are not configured')
+        response = requests.post(
+            'https://api.ebay.com/identity/v1/oauth2/token',
+            auth=(client_id, client_secret),
+            data={'grant_type': 'client_credentials',
+                  'scope': 'https://api.ebay.com/oauth/api_scope'},
+            timeout=12,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        token = payload['access_token']
+        _ebay_token.update(value=token, expires=now + max(60, int(payload.get('expires_in', 7200)) - 120))
+        return token
+
+
+def _ebay_listings(query, token):
+    response = requests.get(
+        'https://api.ebay.com/buy/browse/v1/item_summary/search',
+        headers={'Authorization': 'Bearer ' + token,
+                 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+                 'Accept': 'application/json'},
+        params={'q': query, 'limit': '35', 'filter': 'buyingOptions:{FIXED_PRICE}'},
+        timeout=15,
+    )
+    response.raise_for_status()
+    return response.json().get('itemSummaries', [])
+
+
+def _ebay_grade_match(title, grade):
+    import re
+    title = title.upper()
+    # Only include explicit PSA grade listings in graded buckets.
+    has_psa = bool(re.search(r'\bPSA\s*(?:GEM\s*MT\s*)?(?:10|9|8|7|6|5|4|3|2|1)\b', title))
+    if grade == 'raw':
+        # Avoid mistaking other slabbed cards for raw cards.
+        return not (has_psa or re.search(r'\b(BGS|CGC|SGC|GRADED|SLABBED)\b', title))
+    return bool(re.search(r'\bPSA\s*(?:GEM\s*MT\s*)?' + grade + r'\b', title))
+
+
+def _ebay_bucket(query, grade, token):
+    import re
+    suffix = {'raw': ' -PSA -BGS -CGC -SGC', '9': ' PSA 9', '10': ' PSA 10'}[grade]
+    listings = _ebay_listings(query + suffix, token)
+    matches = []
+    for item in listings:
+        title = str(item.get('title', ''))
+        if not _ebay_grade_match(title, grade):
+            continue
+        price = item.get('price') or {}
+        if price.get('currency') != 'USD':
+            continue
+        try:
+            amount = float(price['value'])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if not 0 < amount < 1000000:
+            continue
+        url = item.get('itemWebUrl', '')
+        if not url.startswith('https://www.ebay.com/'):
+            continue
+        matches.append({'title': title[:180], 'price_usd': round(amount, 2),
+                        'url': url, 'item_id': str(item.get('itemId', ''))[:150]})
+    values = [x['price_usd'] for x in matches]
+    return {'median_asking_price_usd': round(statistics.median(values), 2) if values else None,
+            'listing_count': len(matches), 'listings': matches[:12]}
+
+
+@app.route('/api/ebay/prices', methods=['GET', 'OPTIONS'])
+def ebay_prices():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    origin = request.headers.get('Origin', '').rstrip('/')
+    if origin and origin not in ALLOWED_ORIGINS:
+        return jsonify(error='Origin not allowed'), 403
+    query = (request.args.get('q') or '').strip()
+    if len(query) < 3 or len(query) > 120 or any(ord(c) < 32 for c in query):
+        return jsonify(error='Enter a card name (3–120 characters). Include set, number and variant for accuracy.'), 400
+    ip = request.remote_addr or 'unknown'
+    now = time.monotonic()
+    rate = _ebay_requests[ip]
+    while rate and now - rate[0] > 60:
+        rate.popleft()
+    if len(rate) >= 12:
+        return jsonify(error='Too many price lookups. Try again in a minute.'), 429
+    rate.append(now)
+    cache_key = query.casefold()
+    with _ebay_lock:
+        cached = _ebay_cache.get(cache_key)
+        if cached and time.time() - cached[0] < 600:
+            return jsonify(cached[1])
+    try:
+        token = _ebay_access_token()
+        result = {grade: _ebay_bucket(query, grade, token) for grade in ('raw', '9', '10')}
+    except RuntimeError:
+        return jsonify(error='eBay Production credentials are not configured on the backend.'), 503
+    except (requests.RequestException, ValueError, KeyError):
+        app.logger.warning('eBay pricing request failed')
+        return jsonify(error='eBay listing data is temporarily unavailable. Check API access and try again.'), 502
+    payload = {'query': query, 'source': 'eBay active fixed-price listings',
+               'price_type': 'asking_price_not_sold_value', 'currency': 'USD',
+               'retrieved_at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
+               'grades': result,
+               'disclaimer': 'Active listing asking prices are not completed-sale market values. Search results may include mismatched variants; verify card, set, number and condition.'}
+    with _ebay_lock:
+        if len(_ebay_cache) > 150:
+            _ebay_cache.clear()
+        _ebay_cache[cache_key] = (time.time(), payload)
+    return jsonify(payload)
+
 @app.errorhandler(413)
 def too_large(_):return jsonify(error='Photo exceeds 8 MB.'),413
 
