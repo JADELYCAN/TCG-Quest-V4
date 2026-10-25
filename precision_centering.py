@@ -14,7 +14,7 @@ from typing import Any
 
 
 def _unavailable(reason: str) -> dict[str, Any]:
-    return {'status': 'unavailable', 'method': 'v32_cv_geometry',
+    return {'status': 'unavailable', 'method': 'v33_selective_geometry',
             'reason': str(reason)[:200], 'lr': None, 'tb': None,
             'outer_quad': None, 'inner_quad': None,
             'confidence': 'low', 'border_pixels': None,
@@ -170,6 +170,165 @@ def _border_transition(warp, side, cv2, np):
             'consistency': round(consistency, 2)}
 
 
+
+
+# V33: independent print-frame localization for conventional Pokemon card backs.
+# This deliberately does NOT run on full-art fronts, non-Pokemon cards or a
+# similarly colored image without evidence for the familiar two-logo/back art.
+def _pokemon_back_candidate(warp, cv2, np):
+    h, w = warp.shape[:2]
+    hsv = cv2.cvtColor(warp, cv2.COLOR_BGR2HSV)
+    border_parts = [hsv[int(h*.22):int(h*.78), 7:14],
+                    hsv[int(h*.22):int(h*.78), w-14:w-7],
+                    hsv[7:14, int(w*.22):int(w*.78)],
+                    hsv[h-14:h-7, int(w*.22):int(w*.78)]]
+    blue_shares = []
+    for part in border_parts:
+        blue = ((part[:,:,0]>=95)&(part[:,:,0]<=140)&
+                (part[:,:,1]>=63)&(part[:,:,2]<185))
+        blue_shares.append(float(np.mean(blue)))
+    # The physical blue frame must be visible on all sides; prevents applying
+    # a blue-frame heuristic to dark or holographic front artwork.
+    if min(blue_shares) < .50 or float(np.mean(blue_shares)) < .78:
+        return False
+    def proportion(region, lo, hi):
+        return float(np.mean(cv2.inRange(region, np.array(lo,dtype=np.uint8),
+                                       np.array(hi,dtype=np.uint8))>0))
+    top = hsv[int(h*.07):int(h*.34),int(w*.12):int(w*.89)]
+    bottom = hsv[int(h*.67):int(h*.95),int(w*.12):int(w*.89)]
+    bright_yellow = lambda part: proportion(part,(10,88,50),(40,255,255))
+    if min(bright_yellow(top), bright_yellow(bottom)) < .085:
+        return False
+    # Distinctive light lower hemisphere of the printed Pokeball. A reversed
+    # photo may put it above center, so allow either vertical half.
+    center_upper = hsv[int(h*.36):int(h*.52),int(w*.25):int(w*.75)]
+    center_lower = hsv[int(h*.52):int(h*.72),int(w*.25):int(w*.75)]
+    if max(proportion(center_upper,(0,0,65),(179,100,255)),
+           proportion(center_lower,(0,0,65),(179,100,255))) < .36:
+        return False
+    return True
+
+
+def _pokemon_back_side(warp, side, cv2, np):
+    lab = cv2.cvtColor(warp, cv2.COLOR_BGR2LAB).astype(np.float32)
+    # Every scanline proceeds from the outer physical edge inward.
+    vertical = side in ('left','right')
+    lines = lab if vertical else lab.transpose(1,0,2)
+    if side in ('right','bottom'):
+        lines = lines[:,::-1,:]
+    n, length = lines.shape[:2]
+    lines = lines[int(.20*n):int(.80*n)]
+    max_distance = int(length*.145)
+    if max_distance < 35: return None
+    baseline = np.median(lines[:,7:13],axis=1)
+    delta = np.linalg.norm(lines[:,:max_distance]-baseline[:,None,:],axis=2)
+    changed = (delta>24.0).astype(np.float32)
+    fraction = cv2.GaussianBlur(changed.mean(axis=0)[None,:],(9,1),1.5).reshape(-1)
+    start = max(14,int(length*.023))
+    stop = min(max_distance-10,int(length*.130))
+    pos = None
+    for i in range(start,stop):
+        before = float(np.mean(fraction[max(5,i-10):i-4]))
+        after = float(np.mean(fraction[i:i+8]))
+        if fraction[i]>=.58 and after>=.60 and before<.50 and after-before>=.24:
+            pos = i
+            break
+    if pos is None:
+        return None
+    # Check that the boundary is present on real individual scanlines and in
+    # both halves of the card; do not accept a crossing from a single logo.
+    inset_before=max(5,pos-9)
+    inset_after=min(max_distance-2,pos+9)
+    line_matches=(delta[:,inset_before]<24)&(delta[:,inset_after]>24)
+    consistency=float(line_matches.mean())
+    mid=len(line_matches)//2
+    if consistency < .58 or min(float(line_matches[:mid].mean()),
+                                float(line_matches[mid:].mean())) < .20:
+        return None
+    # Consistency of the boundary in first and second central bands.
+    candidates=[]
+    for part in [changed[:mid],changed[mid:]]:
+        if len(part)<10:return None
+        profile=cv2.GaussianBlur(part.mean(axis=0)[None,:],(9,1),1.5).reshape(-1)
+        possible=[i for i in range(max(start,pos-9),min(stop,pos+10))
+                  if profile[i]>=.51 and float(np.mean(profile[i:i+7]))>=.52]
+        if not possible: return None
+        candidates.append(possible[0])
+    if abs(candidates[0]-candidates[1])>11:
+        return None
+    return {'inset':float(pos), 'strength':round(float(fraction[min(pos+8,len(fraction)-1)]),3),
+            'consistency':round(consistency,3), 'band_difference':abs(candidates[0]-candidates[1])}
+
+
+
+
+def _pokemon_back_gradient_side(warp, side, cv2, np):
+    """Backup cue: fit a consistent, slightly slanted straight printed edge.
+
+    The physical card is rectified, but ink can still be a little slanted.
+    Looking for local edges separately in both halves avoids suppressing a
+    genuine edge that appears at x=40 at one end and x=50 at the other.
+    """
+    lab=cv2.cvtColor(warp,cv2.COLOR_BGR2LAB).astype(np.float32)
+    vertical=side in ('left','right')
+    rows=lab if vertical else lab.transpose(1,0,2)
+    if side in ('right','bottom'):rows=rows[:,::-1,:]
+    count,length=rows.shape[:2]
+    rows=rows[int(.20*count):int(.80*count)]
+    if len(rows)<90:return None
+    delta=np.linalg.norm(rows[:,4:,:]-rows[:,:-4,:],axis=2)
+    lower=max(14,int(length*.023));upper=min(delta.shape[1]-10,int(length*.115))
+    if lower>=upper:return None
+    estimates=[];ratios=[]
+    for half in np.array_split(delta,2,axis=0):
+        e=cv2.GaussianBlur(np.median(half,axis=0)[None,:],(9,1),1.4).reshape(-1)
+        pos=lower+int(np.argmax(e[lower:upper]));peak=float(e[pos]);base=float(np.median(e[lower:upper]))
+        ratio=peak/max(base,1.0)
+        if peak<9.0 or ratio<1.7:return None
+        estimates.append(pos+2);ratios.append(ratio)
+    if abs(estimates[0]-estimates[1])>15:return None
+    # A genuine long border persists in both halves. Confidence is cautious
+    # because close-up phone images still have no professional calibration.
+    position=float(np.mean(estimates))
+    return {'inset':position,'strength':round(min(ratios),3),
+            'consistency':round(min(.77,.35+.12*min(ratios)),3),
+            'band_difference':abs(estimates[0]-estimates[1]),'fallback':'gradient'}
+
+
+def _pokemon_back_measure(warp, quad, matrix, image_width, image_height, cv2, np):
+    if not _pokemon_back_candidate(warp,cv2,np):
+        return None
+    h,w=warp.shape[:2]
+    sides={k:(_pokemon_back_side(warp,k,cv2,np) or _pokemon_back_gradient_side(warp,k,cv2,np)) for k in ('left','right','top','bottom')}
+    if not all(sides.values()):
+        return {'status':'unavailable', 'method':'v33_pokemon_back_frame',
+                'reason':'A conventional Pokemon back was recognized, but not all blue-frame boundaries were consistent. Retake on a contrasting matte surface.',
+                'lr':None, 'tb':None, 'outer_quad':None, 'inner_quad':None,
+                'image_size':[image_width,image_height], 'border_pixels':None,
+                'confidence':'low', 'units':'rectified_image_pixels'}
+    left,right,top,bottom=[sides[k]['inset'] for k in ('left','right','top','bottom')]
+    x2=w-1-right; y2=h-1-bottom
+    # Reject physically implausible or strongly divergent blue-band dimensions.
+    if min(left,right,top,bottom)<12 or max(left,right)>.14*w or max(top,bottom)>.14*h:
+        return None
+    inner_rect=np.array([[[left,top]],[[x2,top]],[[x2,y2]],[[left,y2]]],np.float32)
+    inner_native=cv2.perspectiveTransform(inner_rect,np.linalg.inv(matrix)).reshape(4,2)
+    def norm(points):
+        return [[round(float(x/image_width),6),round(float(y/image_height),6)] for x,y in points]
+    consistency=min(s['consistency'] for s in sides.values())
+    used_fallback=any(s.get('fallback') for s in sides.values())
+    return {'status':'measured', 'method':'v33_pokemon_back_frame',
+            'reason':'Measured the blue outer frame against the printed artwork on a recognized conventional Pokemon card back. Research estimate; not a calibrated professional centering measurement.',
+            'lr':round(100*left/(left+right),1),
+            'tb':round(100*top/(top+bottom),1),
+            'outer_quad':norm(quad),'inner_quad':norm(inner_native),
+            'image_size':[image_width,image_height],
+            'border_pixels':{k:round(s['inset'],1) for k,s in sides.items()},
+            'scanline_consistency':{k:s['consistency'] for k,s in sides.items()},
+            'confidence':'medium' if consistency>=.73 and not used_fallback else 'low',
+            'units':'rectified_image_pixels'}
+
+
 def measure_photo(encoded_jpeg: str) -> dict[str, Any]:
     """Run independent geometry on one prepared JPG; fail closed on uncertain images."""
     try:
@@ -194,6 +353,12 @@ def measure_photo(encoded_jpeg: str) -> dict[str, Any]:
         target = np.array([[0, 0], [W - 1, 0], [W - 1, H - 1], [0, H - 1]], dtype=np.float32)
         matrix = cv2.getPerspectiveTransform(quad, target)
         warp = cv2.warpPerspective(bgr, matrix, (W, H), flags=cv2.INTER_LINEAR)
+        # V33 selectively uses a design-aware edge-to-artwork detector only
+        # for recognizable Pokemon backs. It takes precedence over the generic
+        # strongest-edge search to avoid confusing artwork lines with borders.
+        back_measure = _pokemon_back_measure(warp, quad, matrix, width, height, cv2, np)
+        if back_measure is not None:
+            return back_measure
         sides = {name: _border_transition(warp, name, cv2, np) for name in ('left', 'right', 'top', 'bottom')}
         lr = tb = None
         if sides['left'] and sides['right']:
@@ -248,5 +413,5 @@ def measure_photo(encoded_jpeg: str) -> dict[str, Any]:
 
 def measure_pair(front_b64: str, back_b64: str) -> dict[str, Any]:
     return {'front': measure_photo(front_b64), 'back': measure_photo(back_b64),
-            'version': 2, 'method': 'v32_cv_geometry',
+            'version': 3, 'method': 'v33_selective_geometry',
             'disclaimer': 'Photo-based estimates; not calibrated grader measurements. Full-art designs may not have measurable frame borders.'}
