@@ -223,7 +223,7 @@ def grade_card():
         "If image quality prevents reliable inspection, state that clearly. "
         "Do not claim to detect microscopic defects or authenticate the card. "
         "Return a JSON object with exactly these keys: "
-        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection, category_scores, category_score_notes. "
+        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection, category_scores, category_score_notes, side_scores, side_score_notes. "
         "category_scores must be an object with centering, corners, edges, surface keys. "
         "Grade each category independently from the uploaded FRONT and BACK physical photos only. "
         "Use numeric scores from 1 to 10 in increments of 0.5 (e.g. 8, 8.5), or null "
@@ -233,7 +233,11 @@ def grade_card():
         "Centering concerns visible print borders on both sides; where borders cannot "
         "be assessed, use null. "
         "category_score_notes must be an object with the same four keys and brief "
-        "evidence-based explanations, or a reason the assessment is unavailable. "
+        "evidence-based explanations describing WHY each score was given, using the FRONT and BACK photos and the visible defect locations. "
+        "Additionally return side_scores with front and back fields, each a numeric 1–10 value in 0.5 increments or null if that side cannot be evaluated. "
+        "Return side_score_notes with front and back keys; each must explain that side’s independent score by referencing visible corner, edge or surface evidence. "
+        "Front/back estimates are independent assessments, not mathematically inferred from the overall score. "
+        "A null side score must be explained; do not assert a number when evidence is unclear. "
         "detailed_inspection must be an object with front and back keys; each side has corners and edges objects. "
         "Each corners object must have top_left, top_right, bottom_left, bottom_right keys. "
         "Each edges object must have top, right, bottom, left keys. "
@@ -285,7 +289,7 @@ def grade_card():
                     }
                 ],
                 'response_format': {'type': 'json_object'},
-                'max_tokens': 2600
+                'max_tokens': 3500
             },
             timeout=90
         )
@@ -366,6 +370,20 @@ def grade_card():
         clean['category_score_notes'] = {
             category: str(category_notes.get(category) or '')[:350]
             for category in ('centering', 'corners', 'edges', 'surface')
+        }
+        # Independent front/back assessments for evidence-based per-side reports.
+        # A missing or invalid AI score remains null, never copied from the overall grade.
+        side_scores = result.get('side_scores')
+        side_scores = side_scores if isinstance(side_scores, dict) else {}
+        clean['side_scores'] = {
+            side: _validated_score(side_scores.get(side))
+            for side in ('front', 'back')
+        }
+        side_notes = result.get('side_score_notes')
+        side_notes = side_notes if isinstance(side_notes, dict) else {}
+        clean['side_score_notes'] = {
+            side: str(side_notes.get(side) or '')[:500]
+            for side in ('front', 'back')
         }
         clean['category_score_status'] = (
             'Scores supplied by AI'
