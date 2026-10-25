@@ -1,4 +1,4 @@
-"""TCG Quest V30: conservative photographed-card centering measurements.
+"""TCG Quest V32: conservative photographed-card centering measurements.
 
 Image-processing, NOT model-generated ratios. Measurements require both physical
 card outline and four repeatable printed-border transitions. In ambiguous
@@ -14,7 +14,7 @@ from typing import Any
 
 
 def _unavailable(reason: str) -> dict[str, Any]:
-    return {'status': 'unavailable', 'method': 'v30_cv_geometry',
+    return {'status': 'unavailable', 'method': 'v32_cv_geometry',
             'reason': str(reason)[:200], 'lr': None, 'tb': None,
             'outer_quad': None, 'inner_quad': None,
             'confidence': 'low', 'border_pixels': None,
@@ -34,50 +34,83 @@ def _ordered(pts, np):
 
 
 def _physical_quad(bgr, cv2, np):
+    """Find outer card with multiple independent mask thresholds and edge cues.
+
+    A dominant centered rectangular foreground object is required. This is
+    NOT a border or defect detector; it declines ambiguous images rather than
+    assume that the largest high-contrast item is always a card.
+    """
     h, w = bgr.shape[:2]
     if min(h, w) < 350:
         return None, 'Photo resolution too low for boundary measurement.'
-    scale = min(1.0, 1000 / max(h, w))
-    small = cv2.resize(bgr, (round(w * scale), round(h * scale)), interpolation=cv2.INTER_AREA)
+    scale = min(1., 1100 / max(h, w))
+    small = cv2.resize(bgr, (round(w*scale), round(h*scale)), interpolation=cv2.INTER_AREA)
     sh, sw = small.shape[:2]
     lab = cv2.cvtColor(small, cv2.COLOR_BGR2LAB).astype(np.float32)
-    k = max(7, int(min(sw, sh) * .047))
-    patches = [lab[:k, :k], lab[:k, -k:], lab[-k:, :k], lab[-k:, -k:]]
-    corners = np.concatenate([x.reshape(-1, 3) for x in patches])
-    bg = np.median(corners, axis=0)
-    deviation = np.linalg.norm(lab - bg, axis=2)
-    mask = (deviation > 29).astype(np.uint8) * 255
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    options = []
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if not (.15 * sw * sh < area < .88 * sw * sh):
-            continue
-        rect = cv2.minAreaRect(contour)
-        rw, rh = rect[1]
-        if min(rw, rh) < 160:
-            continue
-        ratio = min(rw, rh) / max(rw, rh)
-        if not (.60 < ratio < .83):
-            continue
-        x, y, ww, hh = cv2.boundingRect(contour)
-        if min(x, y, sw - (x + ww), sh - (y + hh)) < min(sw, sh) * .008:
-            continue
-        approx = cv2.approxPolyDP(cv2.convexHull(contour), .015 * cv2.arcLength(contour, True), True)
-        if len(approx) == 4:
-            quad = approx.reshape(4, 2).astype(np.float32)
-        else:
-            quad = cv2.boxPoints(rect).astype(np.float32)
-        quad = _ordered(quad, np)
-        if quad is not None:
-            options.append((area, quad))
+    patch = max(9, int(min(sw, sh)*.048))
+    patches = [lab[:patch, :patch], lab[:patch, -patch:], lab[-patch:, :patch], lab[-patch:, -patch:]]
+    bg_points = np.concatenate([x.reshape(-1,3) for x in patches])
+    bg = np.median(bg_points,axis=0)
+    dev = np.linalg.norm(lab-bg,axis=2)
+    # LAB background variance controls sensitivity: white, gray, colored matte,
+    # and slightly uneven backgrounds get several chances at segmentation.
+    bg_noise = float(np.median(np.linalg.norm(bg_points-bg,axis=1)))
+    thresholds = [max(17, bg_noise*2.0+9), max(27,bg_noise*2.8+12), max(38,bg_noise*3.8+16)]
+    kernel = np.ones((5,5),np.uint8)
+    masks=[]
+    for thresh in thresholds:
+        mask=(dev>thresh).astype(np.uint8)*255
+        mask=cv2.morphologyEx(mask,cv2.MORPH_CLOSE,kernel,iterations=2)
+        mask=cv2.morphologyEx(mask,cv2.MORPH_OPEN,np.ones((3,3),np.uint8))
+        masks.append(mask)
+    gray=cv2.cvtColor(small,cv2.COLOR_BGR2GRAY)
+    # An independent outline candidate is useful when the card and background
+    # are similar colors but a narrow edge is still visible.
+    edges=cv2.Canny(cv2.GaussianBlur(gray,(5,5),0),45,120)
+    edges=cv2.dilate(edges,np.ones((3,3),np.uint8),iterations=2)
+    edges=cv2.morphologyEx(edges,cv2.MORPH_CLOSE,np.ones((9,9),np.uint8))
+    masks.append(edges)
+    options=[]
+    for mask_id,mask in enumerate(masks):
+        contours,_=cv2.findContours(mask,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            area=cv2.contourArea(cnt)
+            if not (.14*sw*sh<area<.87*sw*sh):continue
+            hull=cv2.convexHull(cnt)
+            rect=cv2.minAreaRect(hull)
+            rw,rh=rect[1]
+            if min(rw,rh)<min(sw,sh)*.24:continue
+            ratio=min(rw,rh)/max(rw,rh)
+            if not (.59<ratio<.85):continue
+            rect_area=rw*rh
+            if rect_area<=0:continue
+            # Reject amorphous high-contrast objects and broad shadows.
+            fill=area/rect_area
+            if not (.77<fill<1.07):continue
+            x,y,bw,bh=cv2.boundingRect(hull)
+            if min(x,y,sw-x-bw,sh-y-bh)<min(sw,sh)*.009:continue
+            center=np.mean(cv2.boxPoints(rect),axis=0)
+            offset=np.linalg.norm((center-np.array([sw/2,sh/2]))/np.array([sw,sh]))
+            if offset>.31:continue
+            approx=cv2.approxPolyDP(hull,.012*cv2.arcLength(hull,True),True)
+            quad=_ordered(approx.reshape(4,2) if len(approx)==4 else cv2.boxPoints(rect),np)
+            if quad is None:continue
+            # Area and contour rectangularity favor the full card over artwork
+            # embedded inside it, but this cannot prove a dark edge is correct.
+            quality=(area/(sw*sh))*(.70+.30*fill)*(1-.6*offset)
+            options.append((quality,quad,mask_id))
     if not options:
-        return None, 'Physical card outline not isolated. Use a contrasting matte background with all edges visible.'
-    area, quad = max(options, key=lambda entry: entry[0])
-    quad /= scale
-    return quad, None
+        return None,'Physical card outline not isolated. Use a contrasting matte background with all edges visible.'
+    # Only accept a contour that has independent segmentation support when
+    # multiple color thresholds generate plausible but conflicting boundaries.
+    options.sort(key=lambda x:x[0],reverse=True)
+    best=options[0]
+    corners=best[1]
+    comparable=[item for item in options if item[2]!=best[2]
+        and np.mean(np.linalg.norm(item[1]-corners,axis=1))<min(sw,sh)*.025]
+    if len(options)>=3 and not comparable and best[2]!=3:
+        return None,'Card boundary was inconsistent across image segmentation methods; retake on a contrasting matte surface.'
+    return corners/scale,None
 
 
 def _border_transition(warp, side, cv2, np):
@@ -200,7 +233,7 @@ def measure_photo(encoded_jpeg: str) -> dict[str, Any]:
             return [[round(float(x / width), 6), round(float(y / height), 6)] for x, y in points]
         valid_infos = [s for s in sides.values() if s]
         confidence = 'high' if status == 'measured' and all(s['consistency'] >= .80 for s in valid_infos) else ('medium' if status != 'unavailable' else 'low')
-        return {'status': status, 'method': 'v30_cv_geometry', 'reason': reason,
+        return {'status': status, 'method': 'v32_cv_geometry', 'reason': reason,
                 'lr': lr, 'tb': tb, 'outer_quad': norm_quad(quad),
                 'inner_quad': norm_quad(inner_native), 'image_size': [width, height],
                 'border_pixels': {k: (round(v['inset'], 1) if v else None) for k, v in sides.items()},
@@ -215,5 +248,5 @@ def measure_photo(encoded_jpeg: str) -> dict[str, Any]:
 
 def measure_pair(front_b64: str, back_b64: str) -> dict[str, Any]:
     return {'front': measure_photo(front_b64), 'back': measure_photo(back_b64),
-            'version': 1, 'method': 'v30_cv_geometry',
+            'version': 2, 'method': 'v32_cv_geometry',
             'disclaimer': 'Photo-based estimates; not calibrated grader measurements. Full-art designs may not have measurable frame borders.'}

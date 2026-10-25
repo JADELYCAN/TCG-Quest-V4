@@ -429,7 +429,7 @@ def grade_card():
         clean["evidence_explanation"] = (
             "Markers are approximate AI-corroborated photo regions, not pixel-accurate "
             "damage detection or a laboratory measurement. No marker does not prove no flaw.")
-        # V30: Independent image-geometry measurements; never infer ratios from the grade.
+        # V32: Ensemble outer-edge detection with conservative border measurement.
         clean["centering_geometry"] = independent_geometry
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
