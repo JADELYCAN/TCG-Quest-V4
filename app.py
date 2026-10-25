@@ -257,6 +257,30 @@ def grade_card():
         "This is an experimental visual condition assessment, "
         "not an official PSA grade."
     ) 
+    # Give the model the actually measured ratios as supporting context for
+    # its CENTERING condition explanation; not as a forced card grade.
+    # These are image-derived experimental values, not calibrated PSA ratios.
+    # Image analysis runs only AFTER rate-limit checks, to limit server CPU use.
+    from precision_centering import measure_pair
+    independent_geometry = measure_pair(front_image, back_image)
+    supported = []
+    for inspected_side in ('front', 'back'):
+        measured = independent_geometry.get(inspected_side) or {}
+        if measured.get('status') in ('measured', 'partial'):
+            values = []
+            if measured.get('lr') is not None:
+                values.append('left/right ' + str(measured['lr']) + '/' + str(round(100 - measured['lr'], 1)))
+            if measured.get('tb') is not None:
+                values.append('top/bottom ' + str(measured['tb']) + '/' + str(round(100 - measured['tb'], 1)))
+            supported.append(inspected_side.upper() + ': ' + ', '.join(values))
+    if supported:
+        grading_instructions += (' Independent repeatable print-frame measurements from photo geometry: '
+            + '; '.join(supported) + '. These are experimental measurements, not official grading criteria. '
+            'Use them as supporting evidence when explaining the centering category, but independently review '
+            'image quality and card design. Do not pretend unmeasured borders were verified.')
+    else:
+        grading_instructions += (' Automatic photo centering did not find a repeatable printed frame on either side. '
+                                 'Do not invent numerical border splits from preset overlays or catalog art.')
     q.append(now)
 
     try:
@@ -405,6 +429,8 @@ def grade_card():
         clean["evidence_explanation"] = (
             "Markers are approximate AI-corroborated photo regions, not pixel-accurate "
             "damage detection or a laboratory measurement. No marker does not prove no flaw.")
+        # V30: Independent image-geometry measurements; never infer ratios from the grade.
+        clean["centering_geometry"] = independent_geometry
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
