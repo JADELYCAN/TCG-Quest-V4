@@ -223,7 +223,7 @@ def grade_card():
         "If image quality prevents reliable inspection, state that clearly. "
         "Do not claim to detect microscopic defects or authenticate the card. "
         "Return a JSON object with exactly these keys: "
-        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection, category_scores, category_score_notes, side_scores, side_score_notes. "
+        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection, category_scores, category_score_notes, side_scores, side_score_notes, evidence_candidates. "
         "category_scores must be an object with centering, corners, edges, surface keys. "
         "Grade each category independently from the uploaded FRONT and BACK physical photos only. "
         "Use numeric scores from 1 to 10 in increments of 0.5 (e.g. 8, 8.5), or null "
@@ -238,6 +238,12 @@ def grade_card():
         "Return side_score_notes with front and back keys; each must explain that side’s independent score by referencing visible corner, edge or surface evidence. "
         "Front/back estimates are independent assessments, not mathematically inferred from the overall score. "
         "A null side score must be explained; do not assert a number when evidence is unclear. "
+        "Evidence candidate locations: return evidence_candidates as an ARRAY of 0–10 entries. "
+        "Add an entry only for a specific visible possible defect (not a clean inspected region). "
+        "Use {side: front or back, type: corner_whitening/corner_wear/edge_chipping/edge_wear/surface_scratch/print_line/crease/dent/stain/other_visible_flaw, bbox: [left,top,right,bottom], observation: short visible evidence, confidence: high or medium}. "
+        "bbox must tightly bound the suspected defect area in FULL PHOTO coordinates scaled from 0 to 1000 (left=0, right=1000, top=0, bottom=1000); not card-relative coordinates. "
+        "Each bbox must span 5–280 units per dimension. Do not mark ordinary design details, glare, sleeves, shadows, or uncertain flaws. "
+        "Exclude evidence that cannot be approximately located; never add placeholders for the 8 standard locations. An empty array is valid. "
         "detailed_inspection must be an object with front and back keys; each side has corners and edges objects. "
         "Each corners object must have top_left, top_right, bottom_left, bottom_right keys. "
         "Each edges object must have top, right, bottom, left keys. "
@@ -289,7 +295,7 @@ def grade_card():
                     }
                 ],
                 'response_format': {'type': 'json_object'},
-                'max_tokens': 3500
+                'max_tokens': 4200
             },
             timeout=90
         )
@@ -390,6 +396,15 @@ def grade_card():
             if all(score is not None for score in clean['category_scores'].values())
             else 'Some categories cannot be assessed from the photographs'
         )
+        # V29: second-pass crop verification. If unsupported or unavailable, no map markers.
+        from evidence import verify_evidence
+        proposed_evidence = result.get("evidence_candidates")
+        clean["evidence_findings"] = verify_evidence(
+            proposed_evidence, {"front":front_image,"back":back_image}, key)
+        clean["evidence_version"] = 1
+        clean["evidence_explanation"] = (
+            "Markers are approximate AI-corroborated photo regions, not pixel-accurate "
+            "damage detection or a laboratory measurement. No marker does not prove no flaw.")
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
