@@ -5,9 +5,15 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 import requests
 
 app=Flask(__name__, static_folder='assets')
-app.config['MAX_CONTENT_LENGTH']=8*1024*1024+4096
+# Both the front and back photos can be 8 MB; allow the pair plus multipart overhead.
+app.config['MAX_CONTENT_LENGTH']=16*1024*1024+65536
 
-ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
+# V27: optional re-assessment endpoint for saved front/back card photos.
+# This runs on the same private AI backend as /api/cards/grade.
+from grade_scores_blueprint import score_blueprint
+app.register_blueprint(score_blueprint)
+
+ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://tcg-quest-v8-test.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
 
 @app.after_request
@@ -217,7 +223,17 @@ def grade_card():
         "If image quality prevents reliable inspection, state that clearly. "
         "Do not claim to detect microscopic defects or authenticate the card. "
         "Return a JSON object with exactly these keys: "
-        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection. "
+        "corners, edges, surface, photo_quality, overall_notes, estimated_grade, grade_low, grade_high, grade_reason, detailed_inspection, category_scores, category_score_notes. "
+        "category_scores must be an object with centering, corners, edges, surface keys. "
+        "Grade each category independently from the uploaded FRONT and BACK physical photos only. "
+        "Use numeric scores from 1 to 10 in increments of 0.5 (e.g. 8, 8.5), or null "
+        "when photo quality, card design, glare, sleeves, or visibility prevent a reliable evaluation. "
+        "Do not derive category scores from the overall estimated grade, and do not assume "
+        "perfect condition when defects are not visible. Do not use any catalog image. "
+        "Centering concerns visible print borders on both sides; where borders cannot "
+        "be assessed, use null. "
+        "category_score_notes must be an object with the same four keys and brief "
+        "evidence-based explanations, or a reason the assessment is unavailable. "
         "detailed_inspection must be an object with front and back keys; each side has corners and edges objects. "
         "Each corners object must have top_left, top_right, bottom_left, bottom_right keys. "
         "Each edges object must have top, right, bottom, left keys. "
@@ -269,7 +285,7 @@ def grade_card():
                     }
                 ],
                 'response_format': {'type': 'json_object'},
-                'max_tokens': 1800
+                'max_tokens': 2600
             },
             timeout=90
         )
@@ -333,6 +349,29 @@ def grade_card():
                     for location in locations
                 }
         clean['detailed_inspection'] = normalized
+
+        # Return evidence-based category scores in the SAME AI request as the
+        # condition report. Missing or malformed scores remain null (never
+        # inferred from the overall grade). The dashboard understands this key.
+        from grade_scores_blueprint import _validated_score
+        category_scores = result.get('category_scores')
+        if not isinstance(category_scores, dict):
+            category_scores = {}
+        clean['category_scores'] = {
+            category: _validated_score(category_scores.get(category))
+            for category in ('centering', 'corners', 'edges', 'surface')
+        }
+        category_notes = result.get('category_score_notes')
+        category_notes = category_notes if isinstance(category_notes, dict) else {}
+        clean['category_score_notes'] = {
+            category: str(category_notes.get(category) or '')[:350]
+            for category in ('centering', 'corners', 'edges', 'surface')
+        }
+        clean['category_score_status'] = (
+            'Scores supplied by AI'
+            if all(score is not None for score in clean['category_scores'].values())
+            else 'Some categories cannot be assessed from the photographs'
+        )
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
