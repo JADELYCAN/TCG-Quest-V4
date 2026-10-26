@@ -1,0 +1,7 @@
+# Add this block to your CURRENT staging app.py above the ALLOWED_ORIGINS definition.
+# If your app.py has custom changes beyond V36, use this instead of replacing it.
+# Keep existing v34/v35/v36 blueprint registrations intact.
+
+if os.getenv('TCG_V37_EDGE_LAB_ENABLED') == '1':
+    from v37_edge_route import v37_edges
+    app.register_blueprint(v37_edges)

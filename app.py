@@ -30,6 +30,11 @@ if os.getenv('TCG_V36_LAB_ENABLED') == '1':
     from unified_route_v36 import v36_lab
     app.register_blueprint(v36_lab)
 
+# V37: opt-in edge accuracy comparison only; does not change grading routes.
+if os.getenv('TCG_V37_EDGE_LAB_ENABLED') == '1':
+    from v37_edge_route import v37_edges
+    app.register_blueprint(v37_edges)
+
 ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://tcg-quest-v8-test.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
 
