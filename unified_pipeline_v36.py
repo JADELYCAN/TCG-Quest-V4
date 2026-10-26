@@ -53,17 +53,18 @@ def _side(raw, side, front_match=None):
                     'quality':photo_quality(bgr),'centering_ratio':None,'grade':None}
         quad=detection['physical_quad']; overlay=detection.pop('overlay_bgr')
     else:
-        # Different method for the back, still uncalibrated candidate cut edge.
-        from precision_centering import _physical_quad
-        q,error=_physical_quad(bgr,cv2,np)
-        if q is None:
-            return {'status':'unavailable','side':side,'reason':error or 'Back outside edge not found.',
-                    'quality':photo_quality(bgr),'centering_ratio':None,'grade':None}
-        quad=q.tolist();overlay=bgr.copy()
-        cv2.polylines(overlay,[np.int32(q)],True,(255,255,0),3,cv2.LINE_AA)
-        detection={'status':'candidate_found','method':'v33_independent_back_contour',
-                   'physical_quad':[[round(float(x),2),round(float(y),2)] for x,y in q],
-                   'confidence':'research_only_uncalibrated','verified_card_edges':False}
+        # V36.1: use the actual dark-blue cut-stock silhouette, not the old
+        # generic dark-object contour. Withhold when this side-specific
+        # detector is uncertain; do not silently borrow an older guide.
+        from back_edge_v36_1 import detect_pokemon_back_cut_edge
+        detection=detect_pokemon_back_cut_edge(bgr)
+        if detection['status']!='candidate_found':
+            return {'status':'unavailable','side':side,
+                    'reason':detection.get('reason','Back cut edge not found.'),
+                    'edge_diagnostics':detection,'quality':photo_quality(bgr),
+                    'centering_ratio':None,'grade':None}
+        quad=detection['physical_quad'];overlay=bgr.copy()
+        cv2.polylines(overlay,[np.int32(np.round(quad))],True,(255,255,0),3,cv2.LINE_AA)
         template_meta=None
     quality=photo_quality(bgr,quad)
     # Including all eight crops is optional to reduce payload size.
