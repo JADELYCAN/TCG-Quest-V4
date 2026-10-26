@@ -19,6 +19,11 @@ if os.getenv('TCG_V34_TEMPLATE_LAB_ENABLED') == '1':
     from template_lab_route_v34 import v34_template_lab
     app.register_blueprint(v34_template_lab)
 
+# V35: RESEARCH ONLY. Separate opt-in; does not modify cards/grade endpoints.
+if os.getenv('TCG_V35_GEOMETRY_LAB_ENABLED') == '1':
+    from template_lab_route_v35 import v35_template_lab
+    app.register_blueprint(v35_template_lab)
+
 
 ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://tcg-quest-v8-test.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
