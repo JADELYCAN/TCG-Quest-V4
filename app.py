@@ -25,6 +25,11 @@ if os.getenv('TCG_V35_GEOMETRY_LAB_ENABLED') == '1':
     app.register_blueprint(v35_template_lab)
 
 
+# V36 research route is disabled unless explicitly enabled on the staging backend.
+if os.getenv('TCG_V36_LAB_ENABLED') == '1':
+    from unified_route_v36 import v36_lab
+    app.register_blueprint(v36_lab)
+
 ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://tcg-quest-v8-test.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
 
