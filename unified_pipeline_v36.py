@@ -7,6 +7,7 @@ no numeric centering, flaw scores, professional grade, or provider API calls.
 from __future__ import annotations
 import base64
 import hashlib
+import os
 import cv2
 import numpy as np
 from template_alignment_v34 import inspect_photo,PILOT_ID,MAX_IMAGE_BYTES
@@ -47,11 +48,44 @@ def _side(raw, side, front_match=None):
         template_meta={'card_id':PILOT_ID,'inliers':aligned.get('inliers'),
                        'matching_fraction':aligned.get('inlier_fraction'),
                        'competing_artwork_inliers':aligned.get('competing_artwork_inliers')}
+        baseline_status=detection.get('status')
+        baseline_reason=detection.get('reason')
+        # V37.3 integration: V36 remains the first choice. Recover ONLY the
+        # confirmed pilot-card front when V36 cannot produce a physical edge.
+        # Research flag defaults OFF; this cannot affect regular grading.
+        selected='v36_front_baseline'
+        if baseline_status!='candidate_found' and os.getenv('TCG_V37_3_ADAPTIVE_ENABLED')=='1':
+            # Import lazily so optional research files cannot break production
+            # app startup when the feature flag is not enabled.
+            try:
+                from v37_2_seed_recovery import recover_front_from_template
+                recovery=recover_front_from_template(bgr,template_q)
+            except (ImportError,ValueError,TypeError,cv2.error) as exc:
+                recovery={'status':'unavailable','reason':'Adaptive recovery module unavailable or rejected input.'}
+            if recovery.get('status')=='candidate_found':
+                detection=recovery
+                selected='v37_3_template_seeded_recovery'
+            else:
+                return {'status':'unavailable','side':side,
+                        'reason':('V36: '+str(baseline_reason or 'edge not detected')+'; V37.3: '+str(recovery.get('reason','recovery unavailable'))),
+                        'template':template_meta,
+                        'edge_diagnostics':{'status':'unavailable','reason':recovery.get('reason'),
+                                            'baseline_reason':baseline_reason,'selected_detector':None},
+                        'quality':photo_quality(bgr),'centering_ratio':None,'grade':None,
+                        'adaptive_attempted':True,'review_required':True}
         if detection['status']!='candidate_found':
-            return {'status':'unavailable','side':side,'reason':detection.get('reason'),
-                    'template':template_meta,'edge_diagnostics':detection,
+            return {'status':'unavailable','side':side,'reason':baseline_reason,
+                    'template':template_meta,'edge_diagnostics':{'status':'unavailable','reason':baseline_reason},
                     'quality':photo_quality(bgr),'centering_ratio':None,'grade':None}
-        quad=detection['physical_quad']; overlay=detection.pop('overlay_bgr')
+        quad=detection['physical_quad']
+        if selected=='v36_front_baseline':
+            overlay=detection.pop('overlay_bgr')
+        else:
+            overlay=bgr.copy()
+            cv2.polylines(overlay,[np.int32(np.round(np.asarray(quad,np.float32)))],True,(255,255,0),3,cv2.LINE_AA)
+        detection['selected_detector']=selected
+        detection['baseline_reason']=baseline_reason if selected!='v36_front_baseline' else None
+        detection['review_required']=True
     else:
         # V36.1: use the actual dark-blue cut-stock silhouette, not the old
         # generic dark-object contour. Withhold when this side-specific
@@ -64,6 +98,8 @@ def _side(raw, side, front_match=None):
                     'edge_diagnostics':detection,'quality':photo_quality(bgr),
                     'centering_ratio':None,'grade':None}
         quad=detection['physical_quad'];overlay=bgr.copy()
+        detection['selected_detector']='v36_pokemon_back'
+        detection['review_required']=True
         cv2.polylines(overlay,[np.int32(np.round(quad))],True,(255,255,0),3,cv2.LINE_AA)
         template_meta=None
     quality=photo_quality(bgr,quad)
@@ -71,12 +107,16 @@ def _side(raw, side, front_match=None):
     crops=inspection_crops(bgr,quad,side=side)
     return {'status':'candidate_cut_edge_found','side':side,'width':ww,'height':hh,
             'template':template_meta,'edge_diagnostics':detection,
+            'selected_detector':detection.get('selected_detector'),
+            'edge_confidence':detection.get('confidence','research_candidate_only'),
+            'weak_sides':detection.get('weak_sides',[]),
+            'review_required':True, 'verified_card_edges':False,
             'edge_quad_normalized':[[round(float(x)/ww,5),round(float(y)/hh,5)] for x,y in quad],
             'overlay_data_uri':_encode(overlay,80),
             'quality':quality,'review_crops':crops,
             'research_signal_maps':examine_image_signals(bgr,quad),'centering_ratio':None,
             'damage_claims':[],'grade':None,
-            'note':'Edges and crops are research candidates, not calibrated centering or confirmed defects.'}
+            'note':'Edges are unverified photo candidates. Review and lock all four cut corners before using in report. No calibrated printed centering or confirmed damage.'}
 
 
 def inspect_v36(front_bytes,card_id,back_bytes=None):

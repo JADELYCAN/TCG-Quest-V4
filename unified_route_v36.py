@@ -41,6 +41,8 @@ def v36_status():
     # Does not call a model or access user images. Safe staging status check.
     if os.getenv('TCG_V36_LAB_ENABLED')!='1':return jsonify(error='V36 lab disabled.'),404
     return jsonify(status='ok',pilot_card_id='swsh11-186',
-                   research_only=True,trained_ml_model=False,
+                   research_only=True,adaptive_v37_3_enabled=os.getenv('TCG_V37_3_ADAPTIVE_ENABLED')=='1',
+                   adaptive_mode='V36 first; template-seeded Giratina front recovery when baseline fails; V36 back preserved',
+                   trained_ml_model=False,
                    verified_centering=False,grade_generation=False,
                    note='Experimental CPU photo detector active; no calibrated centering or grading.')
