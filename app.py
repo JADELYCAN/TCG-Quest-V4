@@ -13,6 +13,13 @@ app.config['MAX_CONTENT_LENGTH']=16*1024*1024+65536
 from grade_scores_blueprint import score_blueprint
 app.register_blueprint(score_blueprint)
 
+# V34: Strictly opt-in staging photo-template alignment lab. It never grades a card.
+# Enable ONLY on staging via TCG_V34_TEMPLATE_LAB_ENABLED=1.
+if os.getenv('TCG_V34_TEMPLATE_LAB_ENABLED') == '1':
+    from template_lab_route_v34 import v34_template_lab
+    app.register_blueprint(v34_template_lab)
+
+
 ALLOWED_ORIGINS={x.strip() for x in os.getenv('ALLOWED_ORIGINS','https://tcg-quest-v4.onrender.com,https://tcg-quest-v4-ai.onrender.com,https://tcg-quest-v8-test.onrender.com,https://jadelycan.github.io').split(',') if x.strip()}
 requests_by_ip=defaultdict(deque)
 
