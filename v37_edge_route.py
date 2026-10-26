@@ -1,4 +1,4 @@
-"""TCG Quest V37 / V37.1: optional comparative edge-detection endpoints.
+"""TCG Quest V37–V37.2: optional comparative edge-detection endpoints.
 
 No changes to regular AI grading, grades, history, or printed centering.
 V37.1 is NEVER auto-promoted without reference labels. The default remains V36.
@@ -16,6 +16,7 @@ from edge_refine_v36 import refine_photo_edges
 from back_edge_v36_1 import detect_pokemon_back_cut_edge
 from v37_edge_accuracy import detect_front, refine_back
 from v37_1_edge_refinement import refine_physical_edges
+from v37_2_seed_recovery import recover_front_from_template
 
 v37_edges=Blueprint('v37_edges',__name__)
 _rate=defaultdict(deque)
@@ -40,21 +41,33 @@ def _candidate(r,w,h):
             'baseline_preserved':r.get('status')!='candidate_found',
             'mean_move_px':r.get('mean_move_px'), 'max_move_px':r.get('max_move_px')}
 
-def _compare_front(raw):
+def _compare_front(raw, *, include_recovery=False):
     img=_image(raw);h,w=img.shape[:2]
     match=inspect_photo(raw,PILOT_ID,include_overlay=False)
     if match.get('status')!='artwork_aligned_only':
-        return {'status':'unavailable','side':'front','reason':match.get('reason','Exact card could not be verified.'),'old':None,'new':None,'guarded':None}
+        return {'status':'unavailable','side':'front','reason':match.get('reason','Exact card could not be verified.'),'old':None,'new':None,'guarded':None,'recovered':None,'stage_diagnostics':{'identity':'failed','reason':match.get('reason','Exact card could not be verified.')}}
     seed=np.asarray(match['projected_template_quad'],np.float32)*[w,h]
     old=refine_photo_edges(img,seed,include_overlay=False)
     v37=detect_front(img,seed)
     guarded=refine_physical_edges(img,old['physical_quad'],side='front') if old.get('physical_quad') is not None else {'status':'unavailable','reason':'V36 front baseline unavailable; preserving original detector.'}
+    # V37.2 is independent of V36: it uses the VERIFIED EXACT-CARD MATCH as
+    # a search *seed*, never as a perfect-centered physical/printing master.
+    recovered=(recover_front_from_template(img,seed) if include_recovery else
+               {'status':'unavailable','reason':'V37.2 fallback is disabled on the older research endpoints.'})
+    if recovered.get('status')!='candidate_found':
+        recovered.setdefault('reason','Unable to establish four coherent photo-backed cut edges.')
     oq=old.get('physical_quad');nq=v37.get('physical_quad');gq=guarded.get('physical_quad')
     return {'status':'comparison_ready','side':'front','width':w,'height':h,
             'reference':'Verified Giratina V 186/196 artwork (uncalibrated catalog projection).',
             'template_match_inliers':match.get('inliers'),
             'template_match_fraction':match.get('inlier_fraction'),
             'old':_candidate(old,w,h),'new':_candidate(v37,w,h),'guarded':_candidate(guarded,w,h),
+            'recovered':_candidate(recovered,w,h) | {'confidence':recovered.get('confidence'), 'weak_sides':recovered.get('weak_sides',[]),
+                 'review_required':True,'calibrated':False},
+            'stage_diagnostics': {'identity':'verified', 'v36':old.get('reason') or 'Candidate found',
+                 'v37':v37.get('reason') or 'Candidate found',
+                 'v37_1':guarded.get('reason') or 'Candidate found',
+                 'v37_2':recovered.get('reason') or ('Research candidate; weak photo edges: '+(', '.join(recovered.get('weak_sides',[])) or 'none'))},
             'comparison_mean_px':round(float(np.mean(np.linalg.norm(np.asarray(oq)-np.asarray(gq),axis=1))),2) if oq is not None and gq is not None else None,
             'measurement_claim':'NONE: research-only candidate physical cut edges; grading and printed centering unchanged.'}
 
@@ -66,6 +79,11 @@ def _compare_back(raw):
     oq=old.get('physical_quad');gq=guarded.get('physical_quad')
     return {'status':'comparison_ready','side':'back','width':w,'height':h,
             'old':_candidate(old,w,h),'new':_candidate(v37,w,h),'guarded':_candidate(guarded,w,h),
+            'recovered': {'status':'unavailable','reason':'V37.2 recovery is front-only; keep the tested V36 Pokémon-back baseline.', 'quad':None, 'verified':False},
+            'stage_diagnostics': {'v36':old.get('reason') or 'Candidate found',
+                 'v37':v37.get('reason') or 'Candidate found',
+                 'v37_1':guarded.get('reason') or 'Candidate found',
+                 'v37_2':'Front-only recovery. V36 back stays the baseline.'},
             'comparison_mean_px':round(float(np.mean(np.linalg.norm(np.asarray(oq)-np.asarray(gq),axis=1))),2) if oq is not None and gq is not None else None,
             'measurement_claim':'NONE: research-only candidate physical cut edges; grading and printed centering unchanged.'}
 
@@ -83,12 +101,25 @@ def status_v371():
                    can_withhold_unsafe_refinement=True,automatic_promotion=False,
                    calibrated_centering=False,grading_changes=False)
 
+@v37_edges.get('/api/research/v37-2/status')
+def status_v372():
+    if os.getenv('TCG_V37_2_EDGE_LAB_ENABLED')!='1':
+        return jsonify(error='V37.2 lab disabled'),404
+    return jsonify(status='ok',lab='V37.2 experimental front recovery',
+                   exact_card_match_required=True,baseline='V36',
+                   works_without_v36_seed=True,front_recovery=True,
+                   automatic_promotion=False,calibrated_centering=False,
+                   grading_changes=False)
+
 @v37_edges.route('/api/research/v37/edge-compare',methods=['POST','OPTIONS'])
 @v37_edges.route('/api/research/v37-1/edge-compare',methods=['POST','OPTIONS'])
+@v37_edges.route('/api/research/v37-2/edge-compare',methods=['POST','OPTIONS'])
 def compare():
     if request.method=='OPTIONS':return ('',204)
+    v372=request.path.startswith('/api/research/v37-2/')
     v371=request.path.startswith('/api/research/v37-1/')
-    if os.getenv('TCG_V37_1_EDGE_LAB_ENABLED' if v371 else 'TCG_V37_EDGE_LAB_ENABLED')!='1':return jsonify(error='Requested research lab disabled'),404
+    flag='TCG_V37_2_EDGE_LAB_ENABLED' if v372 else ('TCG_V37_1_EDGE_LAB_ENABLED' if v371 else 'TCG_V37_EDGE_LAB_ENABLED')
+    if os.getenv(flag)!='1':return jsonify(error='Requested research lab disabled'),404
     origin=request.headers.get('Origin','').rstrip('/')
     allowed={s.strip().rstrip('/') for s in os.getenv('ALLOWED_ORIGINS','').split(',') if s.strip()}
     if origin and origin not in allowed:return jsonify(error='Origin not allowed'),403
@@ -102,11 +133,11 @@ def compare():
     if not fb or len(fb)>MAX_IMAGE_BYTES or bb is not None and (not bb or len(bb)>MAX_IMAGE_BYTES):return jsonify(error='Upload JPG/PNG/WebP photos no larger than 8MB.'),413
     queue.append(now)
     try:
-        front=_compare_front(fb);back=_compare_back(bb) if bb is not None else None
-        return jsonify(status='research_result',version='v37.1',card_id=PILOT_ID,
+        front=_compare_front(fb,include_recovery=v372);back=_compare_back(bb) if bb is not None else None
+        return jsonify(status='research_result',version='v37.2' if v372 else 'v37.1' if v371 else 'v37',card_id=PILOT_ID,
                        front=front,back=back,centering_ratio=None,grade=None,
                        winner='not_selected_without_reviewed_reference',
-                       notice='V36 is preserved. A V37.1 outline is an unverified candidate even when displayed. Compare against separately reviewed corner locations before considering promotion.')
+                       notice='V36 remains the baseline. V37.2 front recovery is an unverified research candidate, not a validated edge, centering ratio or grade. Compare against independently reviewed four corners.')
     except (ValueError,TypeError) as exc:return jsonify(error=str(exc)[:220]),400
     except Exception:
         # Do not reveal internal paths or identity details to the browser.
