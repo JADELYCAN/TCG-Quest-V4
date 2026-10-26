@@ -97,8 +97,27 @@ def _side(raw, side, front_match=None):
                     'reason':detection.get('reason','Back cut edge not found.'),
                     'edge_diagnostics':detection,'quality':photo_quality(bgr),
                     'centering_ratio':None,'grade':None}
+        # V37.4 staging-only gradient cross-check: V36 always provides the
+        # accepted baseline. Refine only when >=3 independently consistent
+        # physical-edge transitions and conservative motion checks pass.
+        selected_back='v36_pokemon_back'
+        if os.getenv('TCG_V37_4_BACK_REFINEMENT_ENABLED')=='1':
+            try:
+                from back_refinement_v37_4 import analyze_pokemon_back_edges
+                micro=analyze_pokemon_back_edges(bgr,detection['physical_quad'])
+            except (ImportError,ValueError,TypeError,cv2.error) as exc:
+                micro={'status':'baseline_preserved','reason':'Optional V37.4 edge cross-check unavailable; V36 baseline preserved.'}
+            detection['v37_4_crosscheck']=micro
+            if micro.get('status')=='micro_refinement_candidate':
+                # This is a photo candidate, not a validated result. Must lock.
+                detection['physical_quad']=micro['refined_quad']
+                detection['confidence']='experimental_guarded_refinement'
+                detection['weak_sides']=[s for s,d in micro.get('side_evidence',{}).items() if not d.get('usable')]
+                selected_back='v37_4_guarded_back_refinement'
+            else:
+                detection['confidence']='research_candidate_only'
         quad=detection['physical_quad'];overlay=bgr.copy()
-        detection['selected_detector']='v36_pokemon_back'
+        detection['selected_detector']=selected_back
         detection['review_required']=True
         cv2.polylines(overlay,[np.int32(np.round(quad))],True,(255,255,0),3,cv2.LINE_AA)
         template_meta=None
