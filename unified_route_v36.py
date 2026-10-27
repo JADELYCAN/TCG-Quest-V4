@@ -47,3 +47,47 @@ def v36_status():
                    trained_ml_model=False,
                    verified_centering=False,grade_generation=False,
                    note='Experimental CPU photo detector active; no calibrated centering or grading.')
+
+
+# V38 calibration lab: attached to the already-registered V36 staging blueprint.
+# Does not touch /api/cards/grade or any existing report route.
+@v36_lab.route('/api/research/v38/centering', methods=['POST', 'OPTIONS'])
+def v38_centering_research():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    if os.getenv('TCG_V38_CENTERING_LAB_ENABLED') != '1' or os.getenv('TCG_V36_LAB_ENABLED') != '1':
+        return jsonify(error='V38 research lab disabled.'), 404
+    origin=request.headers.get('Origin','').rstrip('/')
+    allowed={v.strip().rstrip('/') for v in os.getenv('ALLOWED_ORIGINS','').split(',') if v.strip()}
+    if origin and origin not in allowed: return jsonify(error='Origin not permitted.'), 403
+    ip=request.remote_addr or 'unknown'
+    q=_history[ip]; now=time.monotonic()
+    while q and now-q[0]>3600: q.popleft()
+    if len(q)>=8: return jsonify(error='Staging research request limit reached. Try later.'), 429
+    f=request.files.get('photo_front'); b=request.files.get('photo_back')
+    if f is None or b is None: return jsonify(error='Both original front and back photos are required.'), 400
+    a=f.stream.read(8*1024*1024+1); c=b.stream.read(8*1024*1024+1)
+    if not a or not c or len(a)>8*1024*1024 or len(c)>8*1024*1024:
+        return jsonify(error='Each photo must be less than 8 MB.'), 413
+    try:
+        import json
+        front=json.loads(request.form.get('front_corners','null'))
+        back=json.loads(request.form.get('back_corners','null'))
+        if request.form.get('review_confirmed')!='yes':
+            return jsonify(error='Review all four physical corners on each side before measuring.'), 400
+        from v38_centering_lab import analyze_v38
+        result=analyze_v38(a,c,front,back,request.form.get('card_id',''))
+        q.append(now)
+        return jsonify(result)
+    except (ValueError,TypeError,KeyError,OverflowError) as exc:
+        return jsonify(error=str(exc)[:240]), 400
+    except Exception:
+        return jsonify(error='V38 research processing failed. Check private Render logs.'), 500
+
+@v36_lab.get('/api/research/v38/status')
+def v38_centering_status():
+    if os.getenv('TCG_V38_CENTERING_LAB_ENABLED')!='1' or os.getenv('TCG_V36_LAB_ENABLED')!='1':
+        return jsonify(error='V38 research lab disabled.'),404
+    return jsonify(status='ok',pilot_card_id='swsh11-186', research_only=True,
+                   front_calibrated=False,grade_generation=False,
+                   conventional_back_frame_method='blue_border_pixel_scanlines')
