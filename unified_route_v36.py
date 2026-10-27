@@ -91,3 +91,44 @@ def v38_centering_status():
     return jsonify(status='ok',pilot_card_id='swsh11-186', research_only=True,
                    front_calibrated=False,grade_generation=False,
                    conventional_back_frame_method='blue_border_pixel_scanlines')
+
+# V38.1 two-photo repeatability plus *uncalibrated* front-landmark preview.
+# Staging-only extension of the registered V36 research blueprint.
+@v36_lab.route('/api/research/v38-1/validate', methods=['POST', 'OPTIONS'])
+def v38_1_repeatability():
+    if request.method == 'OPTIONS':return ('', 204)
+    if os.getenv('TCG_V38_1_VALIDATION_ENABLED')!='1' or os.getenv('TCG_V38_CENTERING_LAB_ENABLED')!='1' or os.getenv('TCG_V36_LAB_ENABLED')!='1':
+        return jsonify(error='V38.1 research comparison disabled.'),404
+    origin=request.headers.get('Origin','').rstrip('/')
+    allowed={v.strip().rstrip('/') for v in os.getenv('ALLOWED_ORIGINS','').split(',') if v.strip()}
+    if origin and origin not in allowed:return jsonify(error='Origin not permitted.'),403
+    ip=request.remote_addr or 'unknown';q=_history[ip];now=time.monotonic()
+    while q and now-q[0]>3600:q.popleft()
+    if len(q)>=8:return jsonify(error='Research request limit reached for this instance.'),429
+    names=['photo_front','photo_back_a','photo_back_b']
+    if any(request.files.get(n) is None for n in names):
+        return jsonify(error='Upload the Giratina front and TWO independent back photographs.'),400
+    raws=[request.files[n].stream.read(8*1024*1024+1) for n in names]
+    if any(not x or len(x)>8*1024*1024 for x in raws):
+        return jsonify(error='Each photo must be nonempty and under 8 MB.'),413
+    if request.form.get('review_confirmed')!='yes':
+        return jsonify(error='Confirm reviewed cut corners for all three photos.'),400
+    try:
+        import json
+        vals=[json.loads(request.form.get(k,'null')) for k in ('front_corners','back_a_corners','back_b_corners')]
+        from v38_1_validation import compare_v38_1
+        result=compare_v38_1(*raws,*vals,card_id=request.form.get('card_id',''))
+        q.append(now)
+        return jsonify(result)
+    except (ValueError,TypeError,KeyError,OverflowError) as e:
+        return jsonify(error=str(e)[:240]),400
+    except Exception:
+        return jsonify(error='V38.1 research processing failed. Check private Render logs.'),500
+
+@v36_lab.get('/api/research/v38-1/status')
+def v38_1_status():
+    if os.getenv('TCG_V38_1_VALIDATION_ENABLED')!='1' or os.getenv('TCG_V38_CENTERING_LAB_ENABLED')!='1' or os.getenv('TCG_V36_LAB_ENABLED')!='1':
+        return jsonify(error='V38.1 research disabled.'),404
+    return jsonify(status='ok',pilot_card_id='swsh11-186',research_only=True,
+                   front_calibrated=False,back_calibrated=False,grade_generation=False,
+                   feature='two-photo printed-frame repeatability and noncalibrated front-region projection')
