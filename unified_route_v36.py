@@ -132,3 +132,65 @@ def v38_1_status():
     return jsonify(status='ok',pilot_card_id='swsh11-186',research_only=True,
                    front_calibrated=False,back_calibrated=False,grade_generation=False,
                    feature='two-photo printed-frame repeatability and noncalibrated front-region projection')
+
+# V38.2: the conventional Pokémon-back frame is evaluated INDEPENDENTLY of
+# full-art front catalog registration. Research only; grading endpoint unchanged.
+@v36_lab.route('/api/research/v38-2/validate', methods=['POST', 'OPTIONS'])
+def v38_2_independent_back_measure():
+    if request.method == 'OPTIONS':
+        return ('', 204)
+    required_flags = ('TCG_V36_LAB_ENABLED', 'TCG_V38_CENTERING_LAB_ENABLED',
+                      'TCG_V38_2_INDEPENDENT_BACK_ENABLED')
+    if any(os.getenv(flag) != '1' for flag in required_flags):
+        return jsonify(error='V38.2 research endpoint disabled.'), 404
+    origin = request.headers.get('Origin', '').rstrip('/')
+    allowed = {s.strip().rstrip('/') for s in os.getenv('ALLOWED_ORIGINS', '').split(',') if s.strip()}
+    if origin and origin not in allowed:
+        return jsonify(error='Origin not permitted.'), 403
+    ip = request.remote_addr or 'unknown'
+    q = _history[ip]
+    now = time.monotonic()
+    while q and now - q[0] > 3600:
+        q.popleft()
+    if len(q) >= 8:
+        return jsonify(error='Research request limit reached for this instance.'), 429
+    if request.form.get('review_confirmed') != 'yes' or request.form.get('same_card_confirmed') != 'yes':
+        return jsonify(error='Confirm physical corner reviews and that the photos show the same physical card.'), 400
+    front = request.files.get('photo_front')
+    back = request.files.get('photo_back_a')
+    optional = request.files.get('photo_back_b')
+    if front is None or back is None:
+        return jsonify(error='Upload a front photo and one physical back photograph.'), 400
+    limit = 8 * 1024 * 1024
+    rawa = front.stream.read(limit + 1)
+    rawb = back.stream.read(limit + 1)
+    rawc = optional.stream.read(limit + 1) if optional is not None else None
+    if not rawa or not rawb or any(len(raw) > limit or not raw for raw in (rawa, rawb, *( [rawc] if rawc is not None else [] ))):
+        return jsonify(error='Each photo must be a nonempty image no larger than 8 MB.'), 413
+    try:
+        import json
+        coords_a = json.loads(request.form.get('front_corners', 'null'))
+        coords_b = json.loads(request.form.get('back_a_corners', 'null'))
+        coords_c = json.loads(request.form.get('back_b_corners', 'null')) if rawc is not None else None
+        from v38_2_independent_back import analyze_v38_2
+        result = analyze_v38_2(rawa, rawb, coords_a, coords_b, rawc, coords_c,
+                               card_id=request.form.get('card_id', ''), same_card_confirmed=True)
+        q.append(now)
+        return jsonify(result)
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
+        return jsonify(error=str(exc)[:240]), 400
+    except Exception:
+        return jsonify(error='V38.2 research processing failed. See private Render logs.'), 500
+
+
+@v36_lab.get('/api/research/v38-2/status')
+def v38_2_research_status():
+    flags = ('TCG_V36_LAB_ENABLED', 'TCG_V38_CENTERING_LAB_ENABLED',
+             'TCG_V38_2_INDEPENDENT_BACK_ENABLED')
+    if any(os.getenv(flag) != '1' for flag in flags):
+        return jsonify(error='V38.2 lab disabled.'), 404
+    return jsonify(status='ok', version='v38.2', research_only=True,
+                   front_identity_required_for_back=False, front_calibrated=False,
+                   back_calibrated=False, grade_generation=False,
+                   supports_single_back=True, optional_second_back=True,
+                   notes='Independent Pokémon-back printed-frame analysis with separate front-match diagnostics.')
