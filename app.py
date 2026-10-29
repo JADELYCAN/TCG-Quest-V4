@@ -448,6 +448,7 @@ def grade_card():
             proposed_evidence, {"front":front_image,"back":back_image}, key,
             card_quads={side: independent_geometry.get(side, {}).get("outer_quad") for side in ("front", "back")})
         clean["evidence_version"] = 1
+        clean["evidence_coordinate_policy"] = "full-photo-card-center-v2"
         clean["evidence_explanation"] = (
             "Markers are approximate AI-corroborated photo regions, not pixel-accurate "
             "damage detection or a laboratory measurement. No marker does not prove no flaw.")
