@@ -296,6 +296,11 @@ def grade_card():
     else:
         grading_instructions += (' Automatic photo centering did not find a repeatable printed frame on either side. '
                                  'Do not invent numerical border splits from preset overlays or catalog art.')
+    outline_context = {side: independent_geometry.get(side, {}).get("outer_quad") for side in ("front", "back")}
+    grading_instructions += (' Physical card outlines in normalized FULL PHOTO coordinates (0–1), '
+                             'not defect locations: ' + json.dumps(outline_context) + '. '
+                             'Evidence bbox coordinates still use the full-photo 0–1000 grid. '
+                             'Do not reinterpret coordinates as card-relative; omit uncertain locations.')
     grading_instructions += prompt_context(reviewed_geometry)
     q.append(now)
 
@@ -440,7 +445,8 @@ def grade_card():
         from evidence import verify_evidence
         proposed_evidence = result.get("evidence_candidates")
         clean["evidence_findings"] = verify_evidence(
-            proposed_evidence, {"front":front_image,"back":back_image}, key)
+            proposed_evidence, {"front":front_image,"back":back_image}, key,
+            card_quads={side: independent_geometry.get(side, {}).get("outer_quad") for side in ("front", "back")})
         clean["evidence_version"] = 1
         clean["evidence_explanation"] = (
             "Markers are approximate AI-corroborated photo regions, not pixel-accurate "

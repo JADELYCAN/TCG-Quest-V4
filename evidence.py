@@ -11,7 +11,7 @@ import json
 import math
 import os
 import requests
-from PIL import Image
+from PIL import Image, ImageDraw
 
 LIMIT_PER_SIDE = 6
 LIMIT_TOTAL = 10
@@ -51,6 +51,25 @@ def normalize_candidates(raw):
     return out
 
 
+def on_card(box, quad):
+    """Require a valid convex outline and a marker center inside it; fail closed."""
+    if not isinstance(quad, (list, tuple)) or len(quad) != 4:
+        return False
+    try:
+        if any(len(p) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or not 0 <= v <= 1 for v in p) for p in quad):
+            return False
+        def cross(a,b,c):
+            return (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0])
+        turns=[cross(quad[i],quad[(i+1)%4],quad[(i+2)%4]) for i in range(4)]
+        if not (min(turns)>1e-6 or max(turns)<-1e-6):
+            return False
+        center=((box[0]+box[2])/2000,(box[1]+box[3])/2000)
+        edges=[cross(quad[i],quad[(i+1)%4],center) for i in range(4)]
+        return min(edges)>=-1e-9 or max(edges)<=1e-9
+    except (TypeError,ValueError):
+        return False
+
+
 def _crop_data_url(encoded_jpg, box):
     raw = base64.b64decode(encoded_jpg)
     with Image.open(io.BytesIO(raw)) as im:
@@ -62,34 +81,39 @@ def _crop_data_url(encoded_jpg, box):
         radius = max(75, (x2-x1)/1000*w*1.6, (y2-y1)/1000*h*1.6)
         xlo, ylo = max(0, round(cx-radius)), max(0, round(cy-radius))
         xhi, yhi = min(w, round(cx+radius)), min(h, round(cy+radius))
-        crop = im.crop((xlo, ylo, xhi, yhi))
+        crop = im.crop((xlo, ylo, xhi, yhi)).convert('RGB')
+        # Highlight the exact proposed full-photo box, not the wider context.
+        ImageDraw.Draw(crop).rectangle((x1/1000*w-xlo, y1/1000*h-ylo,
+                                       x2/1000*w-xlo, y2/1000*h-ylo), outline=(255,0,255), width=3)
         crop.thumbnail((900, 900))
         buf = io.BytesIO()
         crop.convert('RGB').save(buf, format='JPEG', quality=92)
     return 'data:image/jpeg;base64,' + base64.b64encode(buf.getvalue()).decode('ascii')
 
 
-def verify_evidence(proposed, photos, api_key, model=None):
+def verify_evidence(proposed, photos, api_key, model=None, card_quads=None):
     """Return only defects the second vision pass can corroborate.
 
     On provider failure return [], not invented or unverified map markers.
     """
-    candidates = normalize_candidates(proposed)
+    candidates = [c for c in normalize_candidates(proposed) if on_card(c['bbox'], (card_quads or {}).get(c['side']))]
     if not candidates or not api_key:
         return []
     content = [{'type': 'text', 'text': (
         'You independently assess candidate visible card flaws in the labeled photo crops below. '
         'Each image is a crop from the collector-uploaded photo and may include glare, print artwork, '
         'reflections, or lens blur. For each id: confirmed=true ONLY if there is credible VISIBLE '
-        'evidence for the described flaw in this crop; otherwise false. Be conservative. '
+        'evidence for the described flaw INSIDE the magenta rectangle; otherwise false. The rectangle is a synthetic annotation, not damage. Surrounding pixels provide context only; never confirm a nearby flaw outside the rectangle. Be conservative. '
         'Return ONLY JSON {"results":[{"id":"F1","confirmed":false,"reason":"..."}]}. '
         'Do not confirm something based only on the description; inspect the pixels.'
     )}]
+    sent = []
     for item in candidates:
         try:
             cropped = _crop_data_url(photos[item['side']], item['bbox'])
         except (ValueError, OSError):
             continue
+        sent.append(item)
         content.append({'type':'text','text':item['id']+' / '+item['side']+' / '+item['type']+' / candidate: '+item['observation']})
         content.append({'type':'image_url','image_url':{'url':cropped,'detail':'high'}})
     if len(content) < 3:
@@ -105,7 +129,7 @@ def verify_evidence(proposed, photos, api_key, model=None):
         data = json.loads(response.json()['choices'][0]['message']['content'])
         verdicts = {r.get('id'):r for r in data.get('results', []) if isinstance(r, dict)}
         result = []
-        for item in candidates:
+        for item in sent:
             verdict = verdicts.get(item['id'])
             if isinstance(verdict, dict) and verdict.get('confirmed') is True:
                 result.append({**item, 'status':'AI corroborated',
