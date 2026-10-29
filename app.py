@@ -85,6 +85,13 @@ def generate():
 
 # Development scanner: visual identification is an estimate, not a verified catalog match.
 scanner_requests=defaultdict(deque)
+# Configurable photo requests per rolling hour; a front/back scan uses two.
+try:
+    SCANNER_REQUESTS_PER_HOUR = int(os.getenv('SCANNER_REQUESTS_PER_HOUR', '60'))
+    if SCANNER_REQUESTS_PER_HOUR < 1:
+        raise ValueError('Limit must be positive')
+except (TypeError, ValueError):
+    SCANNER_REQUESTS_PER_HOUR = 60
 
 @app.route('/api/cards/identify',methods=['POST','OPTIONS'])
 def identify_card():
@@ -95,7 +102,9 @@ def identify_card():
     if not key:return jsonify(error='AI service not configured.'),503
     ip=request.remote_addr or 'unknown'; now=time.monotonic(); q=scanner_requests[ip]
     while q and now-q[0]>3600:q.popleft()
-    if len(q)>=5:return jsonify(error='Scanner demo limit reached (5/hour). Try later.'),429
+    if len(q)>=SCANNER_REQUESTS_PER_HOUR:
+        return jsonify(error=f'Scanner demo limit reached ({SCANNER_REQUESTS_PER_HOUR}/hour). Try later.',
+                       limit_per_hour=SCANNER_REQUESTS_PER_HOUR),429
     upload=request.files.get('card')
     if not upload:return jsonify(error='Choose a card photo.'),400
     raw=upload.read(8*1024*1024+1)
