@@ -175,6 +175,12 @@ def grade_card():
     if not key:
         return jsonify(error='AI grading service not configured.'), 503
 
+    from reviewed_geometry import parse_reviewed_geometry, prompt_context
+    try:
+        reviewed_geometry = parse_reviewed_geometry(request.form.get('reviewed_geometry'))
+    except (ValueError, TypeError, KeyError):
+        return jsonify(error='Invalid reviewed card guides. Review both outlines.'), 400
+
     front = request.files.get('front')
     back = request.files.get('back')
 
@@ -290,6 +296,7 @@ def grade_card():
     else:
         grading_instructions += (' Automatic photo centering did not find a repeatable printed frame on either side. '
                                  'Do not invent numerical border splits from preset overlays or catalog art.')
+    grading_instructions += prompt_context(reviewed_geometry)
     q.append(now)
 
     try:
@@ -440,6 +447,9 @@ def grade_card():
             "damage detection or a laboratory measurement. No marker does not prove no flaw.")
         # V32: Ensemble outer-edge detection with conservative border measurement.
         clean["centering_geometry"] = independent_geometry
+        if reviewed_geometry:
+            clean["reviewed_centering"] = reviewed_geometry
+            clean["reviewed_geometry_revision"] = reviewed_geometry["revision"]
         clean.update(estimated_grade=estimate, grade_low=low, grade_high=high)
 
         return jsonify(
